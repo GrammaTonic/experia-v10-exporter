@@ -203,7 +203,7 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 		return err
 	}
 
-	fmt.Print(ethernetMetrics)
+	// fmt.Print(ethernetMetrics)
 
 	for i := 0; i < len(ethernetMetrics.Names); i += 9 {
 		ifName := ethernetMetrics.Values[i]
@@ -251,7 +251,7 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 		return err
 	}
 
-	fmt.Print(lanMetrics)
+	// fmt.Print(lanMetrics)
 
 	for i := 0; i < len(lanMetrics.Names); i += 6 {
 		ifName := lanMetrics.Values[i]
