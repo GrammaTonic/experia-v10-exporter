@@ -44,11 +44,11 @@ var (
 	ifInOctets = prometheus.NewDesc(
 		metricPrefix+"interface_received_bytes_total",
 		"The total number of bytes received on the interface",
-		[]string{"id", "alias", "mac", "status"}, nil)
+		[]string{"device", "alias", "mac", "status"}, nil)
 	ifOutOctets = prometheus.NewDesc(
 		metricPrefix+"interface_sent_bytes_total",
 		"The total number of bytes transmitted out of the interface",
-		[]string{"id", "alias", "mac", "status"}, nil)
+		[]string{"device", "alias", "mac", "status"}, nil)
 )
 
 type experiav10Collector struct {
