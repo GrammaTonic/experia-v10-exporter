@@ -31,16 +31,20 @@ const (
 	lanPageUrl    = "http://%s/getpage.lua?pid=123&nextpage=Localnet_LAN_LocalnetStatus_t.lp&Menu3Location=0&_=1611056303063"
 	lanMetricsUrl = "http://%s/common_page/lanStatus_lua.lua"
 
-	ethernetPageUrl    = "http://%s/getpage.lua?pid=123&nextpage=Internet_InternetStatusforRoute_t.lp&Menu3Location=0&_=1583884785730"
-	ethernetMetricsUrl = "http://%s/common_page/internet_eth_interface_lua.lua"
+	ethernetPageUrl       = "http://%s/getpage.lua?pid=123&nextpage=Internet_InternetStatusforRoute_t.lp&Menu3Location=0&_=1583884785730"
+	ethernetMetricsUrl    = "http://%s/common_page/internet_eth_interface_lua.lua"
+	ethernetConnectionUrl = "http://%s/common_page/Internet_Internet_lua.lua?TypeUplink=2&pageType=1&forClose=1&_=1697666462675"
 )
 
 var (
-	ethernetDesc = prometheus.NewDesc(
-		metricPrefix+"ethernet_interface",
-		"All wan related metadata.",
-		[]string{"value"}, nil)
-
+	// ethernetDesc = prometheus.NewDesc(
+	// 	metricPrefix+"ethernet_interface",
+	// 	"All wan related metadata.",
+	// 	[]string{"value"}, nil)
+	ifupTime = prometheus.NewDesc(
+		metricPrefix+"internet_connection",
+		"The internet connection status",
+		[]string{"device", "alias", "status", "ip"}, nil)
 	ifInOctets = prometheus.NewDesc(
 		metricPrefix+"interface_received_bytes_total",
 		"The total number of bytes received on the interface",
@@ -93,6 +97,7 @@ func (c *experiav10Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapeErrorsMetric.Describe(ch)
 	ch <- ifInOctets
 	ch <- ifOutOctets
+	ch <- ifupTime
 }
 
 func (c *experiav10Collector) Collect(ch chan<- prometheus.Metric) {
@@ -203,8 +208,25 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 		return err
 	}
 
-	// fmt.Print(ethernetMetrics)
+	ethernetConnectionRequest, err := c.client.Get(fmt.Sprintf(ethernetConnectionUrl, c.ip.String()))
+	if err != nil {
+		return err
+	}
+	defer ethernetConnectionRequest.Body.Close()
 
+	var ethernetConnection struct {
+		Names  []string `xml:"ID_WAN_COMFIG>Instance>ParaName"`
+		Values []string `xml:"ID_WAN_COMFIG>Instance>ParaValue"`
+	}
+
+	if err := xml.NewDecoder(ethernetConnectionRequest.Body).Decode(&ethernetConnection); err != nil {
+		return err
+	}
+
+	// fmt.Print(ethernetMetrics)
+	// fmt.Print(ethernetConnection)
+
+	// EthernetMetrics
 	for i := 0; i < len(ethernetMetrics.Names); i += 9 {
 		ifName := ethernetMetrics.Values[i]
 		// ifAlias := ethernetMetrics.Values[i+1]
@@ -228,8 +250,26 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 			ch <- prometheus.MustNewConstMetric(ifOutOctets, prometheus.CounterValue, outBytes, ifName, ifAlias, ifMAC, ifStatus)
 		}
 	}
-	// Lan Metrics
 
+	// Wan Connection Metrics
+	for i := 0; i < len(ethernetConnection.Names); i += 52 {
+		ifName := ethernetConnection.Values[i+21]
+		// ifAlias := ethernetMetrics.Values[i+1]
+		ifAlias := "WAN"
+		ifIp := ethernetConnection.Values[i+45]
+		ifStatus := ethernetConnection.Values[i+51]
+
+		upTime, err := strconv.ParseFloat(ethernetConnection.Values[i+1], 64)
+		if err != nil {
+			continue
+		}
+
+		if upTime > 0 {
+			ch <- prometheus.MustNewConstMetric(ifupTime, prometheus.CounterValue, upTime, ifName, ifAlias, ifStatus, ifIp)
+		}
+	}
+
+	// Lan Metrics
 	lanPageRequest, err := c.client.Get(fmt.Sprintf(lanPageUrl, c.ip.String()))
 	if err != nil {
 		return err
