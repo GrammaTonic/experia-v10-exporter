@@ -308,12 +308,12 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 			continue
 		}
 
-		if inBytes > 0 {
-			ch <- prometheus.MustNewConstMetric(ifInOctets, prometheus.CounterValue, inBytes, ifName, ifAlias, ifMAC, ifStatus)
-		}
-		if outBytes > 0 {
-			ch <- prometheus.MustNewConstMetric(ifOutOctets, prometheus.CounterValue, outBytes, ifName, ifAlias, ifMAC, ifStatus)
-		}
+		// if inBytes > 0 {
+		ch <- prometheus.MustNewConstMetric(ifInOctets, prometheus.CounterValue, inBytes, ifName, ifAlias, ifMAC, ifStatus)
+		// }
+		// if outBytes > 0 {
+		ch <- prometheus.MustNewConstMetric(ifOutOctets, prometheus.CounterValue, outBytes, ifName, ifAlias, ifMAC, ifStatus)
+		// }
 	}
 
 	return nil
