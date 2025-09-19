@@ -13,7 +13,9 @@ import (
 )
 
 const metricPrefix = "experia_v10_"
-const apiUrl = "http://%s/ws/NeMo/Intf/lan:getMIBs"
+
+// apiUrl is provided via build-tag files (production in apiurl_prod.go and test override when running
+// tests with -tags test).
 
 type sessionContext struct {
 	Token string

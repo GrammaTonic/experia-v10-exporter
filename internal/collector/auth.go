@@ -39,9 +39,16 @@ func (c *Experiav10Collector) authenticate() (sessionContext, error) {
 		return sessionContext{}, err
 	}
 	defer resp.Body.Close()
-	// Store cookies from authentication response
+	// Store cookies from authentication response. Use the actual request URL so tests that
+	// rewrite the transport (redirecting to an httptest.Server) still set cookies under
+	// the correct host:port.
 	if c.client.Jar != nil {
-		u, _ := url.Parse(apiURL)
+		var u *url.URL
+		if req != nil && req.URL != nil {
+			u = req.URL
+		} else {
+			u, _ = url.Parse(apiURL)
+		}
 		c.client.Jar.SetCookies(u, resp.Cookies())
 	}
 	respBody, err := io.ReadAll(resp.Body)
