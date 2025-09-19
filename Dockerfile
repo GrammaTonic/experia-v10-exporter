@@ -10,17 +10,21 @@ WORKDIR /go/src/app
 COPY go.mod go.sum ./
 
 # Assuming the source code is collocated to this Dockerfile
+# Copy the rest of the source and download dependencies so Docker layer cache
+# can be reused when code changes but dependencies don't.
 COPY . .
 
-# Build the Go app with CGO_ENABLED=0 so we use the pure-Go implementations for
-# things like DNS resolution (so we don't build a binary that depends on system
-# libraries)
-RUN CGO_ENABLED=0 go build -o /experia-v10-exporter
+# Download modules first so they are cached in a separate layer.
+RUN go mod download
+
+# Build the Go app with CGO disabled and target the main package under cmd/.
+# Set GOOS=linux to ensure a Linux binary for the scratch image.
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /experia-v10-exporter ./cmd/experia-v10-exporter
 
 # Create a "nobody" non-root user for the next image by crafting an /etc/passwd
 # file that the next image can copy in. This is necessary since the next image
 # is based on scratch, which doesn't have adduser, cat, echo, or even sh.
-RUN echo "nobody:x:65534:65534:Nobody:/:" > /etc_passwd
+RUN echo "nobody:x:65534:65534:Nobody:/:" > /etc/passwd
 
 # The second and final stage
 FROM scratch
