@@ -52,11 +52,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set image name
+        id: image
+        run: |
+          # compute lowercase owner and repository name for a valid ghcr path
+          owner=$(echo "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
+          repo=$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${owner}/${repo}" >> "$GITHUB_OUTPUT"
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/experia-v10-exporter:ci
-            ghcr.io/${{ github.repository_owner }}/experia-v10-exporter:latest
+            ghcr.io/${{ steps.image.outputs.image }}:ci
+            ghcr.io/${{ steps.image.outputs.image }}:latest
