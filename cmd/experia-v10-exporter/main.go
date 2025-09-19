@@ -63,13 +63,5 @@ func runMain() error {
 var listenAndServe = http.ListenAndServe
 
 // exitOnError is called when main needs to exit due to an error. Tests may override it to avoid exiting the process.
-var exitOnError = func(err error) {
-	if err != nil {
-		// When running tests we can set EXPERIA_V10_TEST_MODE=1 to avoid exiting the process
-		if os.Getenv("EXPERIA_V10_TEST_MODE") == "1" {
-			log.Printf("exitOnError (test mode): %v", err)
-			return
-		}
-		log.Fatal(err)
-	}
-}
+// exitOnError is defined in a separate file so tests can override it without
+// leaving an untestable log.Fatal call inside main.go itself.
