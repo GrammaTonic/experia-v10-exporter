@@ -20,7 +20,7 @@ func (c *Experiav10Collector) authenticate() (sessionContext, error) {
 			"password":        c.password,
 		},
 	}
-	body, err := json.Marshal(payload)
+	body, err := jsonMarshal(payload)
 	if err != nil {
 		return sessionContext{}, err
 	}

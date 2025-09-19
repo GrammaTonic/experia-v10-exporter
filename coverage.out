@@ -1,22 +1,4 @@
 mode: set
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:18.62,21.16 3 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:21.16,23.3 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:24.2,25.15 2 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:25.15,27.3 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:28.2,32.49 4 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:32.49,34.3 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:36.2,39.29 3 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:42.13,43.34 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:43.34,46.3 2 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:50.22,52.16 2 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:52.16,54.3 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:55.2,56.56 2 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:56.56,58.3 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:59.2,59.12 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:66.35,67.16 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:67.16,69.48 1 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:69.48,72.4 2 1
-github.com/GrammaTonic/experia-v10-exporter/cmd/experia-v10-exporter/main.go:73.3,73.17 1 0
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/auth.go:12.70,24.16 4 1
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/auth.go:24.16,26.3 1 0
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/auth.go:27.2,28.16 2 1
@@ -53,7 +35,7 @@ github.com/GrammaTonic/experia-v10-exporter/internal/collector/collector.go:121.
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/collector.go:124.54,126.6 1 1
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/collector.go:127.5,136.6 1 1
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/fetch.go:10.116,12.16 2 1
-github.com/GrammaTonic/experia-v10-exporter/internal/collector/fetch.go:12.16,14.3 1 0
+github.com/GrammaTonic/experia-v10-exporter/internal/collector/fetch.go:12.16,14.3 1 1
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/fetch.go:15.2,15.28 1 1
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/fetch.go:15.28,17.3 1 1
 github.com/GrammaTonic/experia-v10-exporter/internal/collector/fetch.go:18.2,19.16 2 1

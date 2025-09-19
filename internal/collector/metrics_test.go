@@ -249,6 +249,18 @@ func TestFetchURLInvalidURL_NonTag(t *testing.T) {
 	}
 }
 
+// TestAuthenticateJSONMarshalError_NonTag forces json marshal failure in non-test build
+func TestAuthenticateJSONMarshalError_NonTag(t *testing.T) {
+	old := jsonMarshal
+	defer func() { jsonMarshal = old }()
+	jsonMarshal = func(v any) ([]byte, error) { return nil, &simpleErr{"marshal fail"} }
+
+	c := NewCollector(net.ParseIP("192.0.2.40"), "u", "p", 1)
+	if _, err := c.authenticate(); err == nil {
+		t.Fatalf("expected authenticate to fail when json.Marshal errors")
+	}
+}
+
 // TestAuthenticateNewRequestError forces an invalid apiUrl to trigger http.NewRequest error in authenticate
 // moved to test-only file metrics_test_overrides.go
 
