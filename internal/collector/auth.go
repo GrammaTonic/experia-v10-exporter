@@ -43,7 +43,11 @@ func (c *Experiav10Collector) authenticate() (sessionContext, error) {
 	// the correct host:port.
 	if c.client.Jar != nil {
 		var u *url.URL
-		if req != nil && req.URL != nil {
+		// Prefer the URL the transport actually used (resp.Request), fall back to the original req.URL,
+		// and finally parse the apiURL if neither is available.
+		if resp != nil && resp.Request != nil && resp.Request.URL != nil {
+			u = resp.Request.URL
+		} else if req != nil && req.URL != nil {
 			u = req.URL
 		} else {
 			u, _ = url.Parse(apiURL)

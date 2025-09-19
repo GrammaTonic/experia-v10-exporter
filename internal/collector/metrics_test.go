@@ -273,35 +273,7 @@ func TestAuthenticateNewRequestError_NonTag(t *testing.T) {
 	}
 }
 
-// TestAuthenticateReqURLNil forces newRequest to return a request with nil URL to hit the else branch
-func TestAuthenticateReqURLNil(t *testing.T) {
-	oldNew := newRequest
-	defer func() { newRequest = oldNew }()
-	newRequest = func(method, url string, body io.Reader) (*http.Request, error) {
-		// return a request with nil URL to force Parse(apiURL) path
-		return &http.Request{Method: method, Header: make(http.Header)}, nil
-	}
-
-	c := NewCollector(net.ParseIP("192.0.2.50"), "u", "p", 1)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		h := make(http.Header)
-		h.Add("Set-Cookie", "session=zzz; Path=/")
-		r := &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(bytes.NewReader([]byte(`{"data":{"contextID":"ctx-reqnil"}}`))),
-			Header:     h,
-		}
-		return r, nil
-	})
-
-	ctx, err := c.authenticate()
-	if err != nil {
-		t.Fatalf("authenticate failed: %v", err)
-	}
-	if ctx.Token != "ctx-reqnil" {
-		t.Fatalf("unexpected token: %s", ctx.Token)
-	}
-}
+// (removed TestAuthenticateReqURLNil — replaced by resp.Request URL handling in auth.go)
 
 // TestAuthenticateNewRequestError forces an invalid apiUrl to trigger http.NewRequest error in authenticate
 // moved to test-only file metrics_test_overrides.go
