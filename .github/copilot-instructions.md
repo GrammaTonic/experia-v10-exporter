@@ -31,11 +31,68 @@ These instructions are auto-generated from the repository contents. They are tec
 - Logging: use `log.Printf` or `log.Fatal` in `cmd` level. Internal packages should avoid calling `log.Fatal`; return errors instead.
 - Avoid global mutable state in internal packages. Use structs that encapsulate state (e.g., `Experiav10Collector`).
 
+## Go-specific guidelines
+- Respect the `go` version declared in `go.mod` and avoid using language features newer than that version.
+- Run `gofmt` (or `gofmt -s`) for formatting and `go vet` as part of local development. Prefer `gofumpt` only if the project opts in.
+- Prefer `context.Context` for cancellation and timeouts in network calls and exported APIs; pass context from callers where possible.
+- Use small interfaces to enable testing (e.g., define an interface for HTTP clients or metrics sinks and inject implementations in tests).
+- Favor explicit error wrapping with `fmt.Errorf("context: %w", err)` to preserve cause chains.
+- Keep exported APIs well-documented with Go doc comments (starting with the symbol name) for public types and functions.
+- Add unit tests alongside code. For HTTP interactions prefer `httptest.Server` or injecting an `http.Client` with a mocked `Transport` for deterministic tests.
+- When adding dependencies, prefer minimal, widely-used libraries and add them using `go get` / `go mod tidy`; avoid unnecessary transitive dependencies.
+
 ## Testing recommendations
-- No unit tests found. When adding tests:
-  - Use the Go `testing` package.
-  - Place package tests alongside package source files (`internal/collector/collector_test.go`).
-  - Use table-driven tests for parsing and small logic. For HTTP interactions, use `httptest.Server` or inject an `http.Client` with a transport mock.
+- The project prefers behavior-driven tests using Ginkgo (v2) and Gomega for assertions when adding new tests.
+  - Install the test helpers with:
+
+    ```bash
+    go get github.com/onsi/ginkgo/v2
+    go get github.com/onsi/gomega
+    ```
+
+  - Initialize a test suite in a package directory with:
+
+    ```bash
+    ginkgo bootstrap
+    ginkgo generate <package-name>
+    ```
+
+  - Place tests alongside package source files, e.g. `internal/collector/collector_test.go` and use `_test.go` suffixes.
+  - Use Ginkgo's Describe/Context/It blocks and Gomega matchers for clear, readable tests.
+  - For HTTP interactions, prefer using `httptest.Server` or inject a custom `http.Client` with a mock `Transport` so tests run deterministically without network access.
+  - When testing JSON parsing or small logic, use table-driven tests within `Describe/It` blocks to cover edge cases.
+  - Example test outline:
+
+    ```go
+    package collector_test
+
+    import (
+      . "github.com/onsi/ginkgo/v2"
+      . "github.com/onsi/gomega"
+      "net/http"
+      "net/http/httptest"
+      "github.com/GrammaTonic/experia-v10-exporter/internal/collector"
+    )
+
+    var _ = Describe("Experia Collector", func() {
+      It("parses WAN status correctly", func() {
+        server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+          w.Write([]byte(`{"status":true,"data":{"ConnectionState":"Connected"}}`))
+        }))
+        defer server.Close()
+
+        // inject http.Client with server.URL or set up collector to use the test server
+        Expect(true).To(BeTrue())
+      })
+    })
+    ```
+
+  - Run tests with `ginkgo -v ./...` or `go test ./...` (ginkgo also supports `ginkgo -r` for recursive runs).
+  - Add CI steps to run `ginkgo -v ./...` or `go test ./...` in GitHub Actions.
+
+- If you prefer classic `testing` package tests for small utilities, it's acceptable, but larger integration/behavior tests should use Ginkgo.
+- Follow existing patterns for test naming, organization, and use table-driven styles where appropriate.
 
 ## File and package guidelines
 - New commands: place a new `main` under `cmd/<toolname>/main.go` that imports internal packages by module path.
