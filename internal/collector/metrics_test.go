@@ -261,6 +261,18 @@ func TestAuthenticateJSONMarshalError_NonTag(t *testing.T) {
 	}
 }
 
+// TestAuthenticateNewRequestError_NonTag forces http.NewRequest to fail via newRequest override
+func TestAuthenticateNewRequestError_NonTag(t *testing.T) {
+	old := newRequest
+	defer func() { newRequest = old }()
+	newRequest = func(method, url string, body io.Reader) (*http.Request, error) { return nil, &simpleErr{"bad request"} }
+
+	c := NewCollector(net.ParseIP("192.0.2.31"), "u", "p", 1)
+	if _, err := c.authenticate(); err == nil {
+		t.Fatalf("expected authenticate to fail when newRequest errors")
+	}
+}
+
 // TestAuthenticateNewRequestError forces an invalid apiUrl to trigger http.NewRequest error in authenticate
 // moved to test-only file metrics_test_overrides.go
 

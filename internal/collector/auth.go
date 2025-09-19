@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 )
 
@@ -24,7 +23,7 @@ func (c *Experiav10Collector) authenticate() (sessionContext, error) {
 	if err != nil {
 		return sessionContext{}, err
 	}
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(body))
+	req, err := newRequest("POST", apiURL, bytes.NewBuffer(body))
 	if err != nil {
 		return sessionContext{}, err
 	}
