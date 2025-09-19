@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 )
 
 func (c *Experiav10Collector) authenticate() (sessionContext, error) {
@@ -41,19 +40,8 @@ func (c *Experiav10Collector) authenticate() (sessionContext, error) {
 	// Store cookies from authentication response. Use the actual request URL so tests that
 	// rewrite the transport (redirecting to an httptest.Server) still set cookies under
 	// the correct host:port.
-	if c.client.Jar != nil {
-		var u *url.URL
-		// Prefer the URL the transport actually used (resp.Request), fall back to the original req.URL,
-		// and finally parse the apiURL if neither is available.
-		if resp != nil && resp.Request != nil && resp.Request.URL != nil {
-			u = resp.Request.URL
-		} else if req != nil && req.URL != nil {
-			u = req.URL
-		} else {
-			u, _ = url.Parse(apiURL)
-		}
-		c.client.Jar.SetCookies(u, resp.Cookies())
-	}
+	// Store cookies using helper to make fallback behavior testable.
+	setCookiesFromResponse(c.client.Jar, resp, req.URL, apiURL)
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return sessionContext{}, err

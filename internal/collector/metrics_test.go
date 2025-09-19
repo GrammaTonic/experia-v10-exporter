@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -259,6 +260,29 @@ func TestAuthenticateJSONMarshalError_NonTag(t *testing.T) {
 	if _, err := c.authenticate(); err == nil {
 		t.Fatalf("expected authenticate to fail when json.Marshal errors")
 	}
+}
+
+func TestSetCookiesFromResponseFallback(t *testing.T) {
+	// Simulate resp with nil Request and nil reqURL so fallback parsing is used
+	jar, _ := cookiejar.New(nil)
+	resp := &http.Response{
+		Header: make(http.Header),
+		Body:   io.NopCloser(bytes.NewReader([]byte("ok"))),
+	}
+	resp.Header.Add("Set-Cookie", "a=b; Path=/")
+
+	// Call helper with nil reqURL and a fallback URL
+	setCookiesFromResponse(jar, resp, nil, "http://example.local/")
+	u, _ := url.Parse("http://example.local/")
+	cookies := jar.Cookies(u)
+	if len(cookies) == 0 {
+		t.Fatalf("expected cookies to be set on fallback URL")
+	}
+}
+
+func TestSetCookiesFromResponseNilInputs(t *testing.T) {
+	// Verify no panic on nil jar or nil resp
+	setCookiesFromResponse(nil, nil, nil, "http://example.local/")
 }
 
 // TestAuthenticateNewRequestError_NonTag forces http.NewRequest to fail via newRequest override
