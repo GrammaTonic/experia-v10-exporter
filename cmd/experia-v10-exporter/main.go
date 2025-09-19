@@ -30,7 +30,7 @@ func Setup() (string, *collector.Experiav10Collector, error) {
 
 	col := collector.NewCollector(ip, username, password, timeout)
 	if err := prometheus.Register(col); err != nil {
-		return "", nil, fmt.Errorf("Failed to register collector: %w", err)
+		return "", nil, fmt.Errorf("failed to register collector: %w", err)
 	}
 
 	http.Handle("/metrics", promhttp.Handler())

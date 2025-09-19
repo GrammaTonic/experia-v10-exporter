@@ -30,3 +30,6 @@ pkg/
 
 # Misc
 *.orig
+
+# Local experiments / secrets
+.experia.env

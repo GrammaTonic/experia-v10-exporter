@@ -200,20 +200,7 @@ var _ = Describe("Experia Collector", func() {
 	})
 })
 
-// contains performs a substring check
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || (len(s) > len(sub) && (stringIndex(s, sub) >= 0)))
-}
-
-// stringIndex is a simple implementation of strings.Index to avoid importing strings
-func stringIndex(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
-}
+// ...existing code...
 
 // rewriteTransport rewrites all requests to the baseURL while preserving the method and headers/body.
 func rewriteTransport(baseURL string) http.RoundTripper {

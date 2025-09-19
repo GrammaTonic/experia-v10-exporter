@@ -99,3 +99,32 @@ To contribute:
 3. Make your changes
 4. Run tests and build
 5. Submit a pull request
+
+## Netdev metrics (added)
+
+The collector now dynamically discovers network interfaces from the router MIBs and exposes these metrics:
+
+- `experia_v10_netdev_up{ifname="..."}` — 1 if interface is up, 0 otherwise
+- `experia_v10_netdev_mtu{ifname="..."}` — MTU value
+- `experia_v10_netdev_tx_queue_len{ifname="..."}` — transmit queue length
+- `experia_v10_netdev_speed_mbps{ifname="..."}` — link speed in Mbps (if available)
+- `experia_v10_netdev_last_change_seconds{ifname="..."}` — last change time (seconds)
+- `experia_v10_netdev_info{ifname="...",alias="...",flags="...",lladdr="...",type="..."}` — presence/info metric (value 1)
+
+Notes:
+- `ifname` is normalized to uppercase when emitted to avoid duplicate series and make queries simpler.
+
+PromQL examples:
+
+- Count interfaces that are up:
+
+   `count(experia_v10_netdev_up == 1)`
+
+- MTU for ETH0:
+
+   `experia_v10_netdev_mtu{ifname="ETH0"}`
+
+- Interfaces with MTU less than 1500:
+
+   `experia_v10_netdev_mtu < 1500`
+
