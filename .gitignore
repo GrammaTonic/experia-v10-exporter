@@ -1,0 +1,32 @@
+# Binaries for programs and plugins
+/bin/
+/build/
+/dist/
+
+# Test binary, coverage
+*.test
+coverage.out
+coverage*.out
+
+# Vendor directory
+/vendor/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Logs and temp files
+*.log
+.cache/
+
+# OS generated files
+Thumbs.db
+
+# Go workspace
+pkg/
+
+# Misc
+*.orig
