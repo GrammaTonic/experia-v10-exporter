@@ -1,12 +1,11 @@
 project_name: experia-v10-exporter
 
 builds:
-  - id: experia
-    main: ./cmd/experia-v10-exporter
+  - main: ./cmd/experia-v10-exporter
+    binary: experia-v10-exporter
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
@@ -14,49 +13,29 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-    binary: experia-v10-exporter
-    hooks:
-      pre: |
-        echo "No-op pre-hook"
+
 archives:
-  - id: default
-    builds:
-      - experia
+  - builds:
+      - experia-v10-exporter
     format: tar.gz
     files:
       - README.md
       - LICENSE
-      - docker/Dockerfile
+
 changelog:
   use: git
+
 snapshot:
   name_template: "{{ .Tag }}-SNAPSHOT"
 
 dockers:
   - image_templates:
       - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
-    use: buildx
-    buildx:
-      tags:
-        - latest
-
-brews:
-  - id: experia
-    name: experia-v10-exporter
-    github:
-      owner: GrammaTonic
-      name: experia-v10-exporter
-    folder: dist/homebrew
-    draft: true
-    taps:
-      - github.com/GrammaTonic/homebrew-tap
 
 release:
   github:
     owner: GrammaTonic
     name: experia-v10-exporter
-    draft: false
-    prerelease: false
 
 archive:
   format_overrides:
