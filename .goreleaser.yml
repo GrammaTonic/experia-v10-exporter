@@ -12,11 +12,9 @@ builds:
     ldflags: ['-s -w']
 
 archives:
-  - builds:
-      - experia-v10-exporter
+  - id: default
     formats: [tar.gz]
-    files:
-      - README.md
+    files: [README.md]
     format_overrides:
       - goos: windows
         format: zip
@@ -24,15 +22,5 @@ archives:
 changelog:
   use: git
 
-dockers:
-  - image_templates:
-      - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
-    use: buildx
-    platforms:
-      - linux/amd64
-      - linux/arm64
-
-release:
-  github:
-    owner: GrammaTonic
-    name: experia-v10-exporter
+# Deprecated fields removed: snapshot.name_template and archives.builds
+# This is a minimal goreleaser v2 config suitable for snapshot checks.
