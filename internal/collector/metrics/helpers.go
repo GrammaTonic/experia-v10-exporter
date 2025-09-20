@@ -64,6 +64,67 @@ var (
 		"Info metric with the device-assigned set_port mapping (value is always 1)",
 		[]string{"ifname", "set_port"}, nil)
 
+	// Explicit metric to mark which stable ifname is the WAN interface. The
+	// value is always 1 and the label `ifname` contains the canonical
+	// stable name (eth1..ethN). This makes it easy for dashboards to locate
+	// the WAN interface without relying on alias string matching.
+	WanIfname = prometheus.NewDesc(
+		MetricPrefix+"wan_ifname",
+		"Indicates which stable ifname is the WAN interface (value=1).",
+		[]string{"ifname"}, nil)
+
+	// WAN-specific port metrics (separate from the generic netdev_* families).
+	WanPortCurrentBitrate = prometheus.NewDesc(
+		MetricPrefix+"wan_port_current_bitrate_mbps",
+		"Current port bitrate for the WAN port in Mbps",
+		[]string{"ifname"}, nil)
+	WanPortMaxBitRateSupported = prometheus.NewDesc(
+		MetricPrefix+"wan_port_max_bitrate_supported_mbps",
+		"Maximum supported port bitrate for the WAN port in Mbps",
+		[]string{"ifname"}, nil)
+	WanPortMaxBitRateEnabled = prometheus.NewDesc(
+		MetricPrefix+"wan_port_max_bitrate_enabled_mbps",
+		"Maximum enabled port bitrate for the WAN port in Mbps",
+		[]string{"ifname"}, nil)
+	WanPortDuplexEnabled = prometheus.NewDesc(
+		MetricPrefix+"wan_port_duplex_enabled",
+		"Whether duplex mode is enabled for the WAN port (1 = enabled)",
+		[]string{"ifname"}, nil)
+
+	// WAN-specific traffic counters (separate from netdev_rx/tx_* families).
+	WanRxPackets = prometheus.NewDesc(
+		MetricPrefix+"wan_rx_packets_total",
+		"Number of received packets on the WAN interface",
+		[]string{"ifname"}, nil)
+	WanTxPackets = prometheus.NewDesc(
+		MetricPrefix+"wan_tx_packets_total",
+		"Number of transmitted packets on the WAN interface",
+		[]string{"ifname"}, nil)
+	WanRxBytes = prometheus.NewDesc(
+		MetricPrefix+"wan_rx_bytes_total",
+		"Number of received bytes on the WAN interface",
+		[]string{"ifname"}, nil)
+	WanTxBytes = prometheus.NewDesc(
+		MetricPrefix+"wan_tx_bytes_total",
+		"Number of transmitted bytes on the WAN interface",
+		[]string{"ifname"}, nil)
+	WanUp = prometheus.NewDesc(
+		MetricPrefix+"wan_up",
+		"1 if the WAN interface is up (value=1)",
+		[]string{"ifname"}, nil)
+
+	// WAN info similar to netdev_info (value=1), labels: alias, flags, lladdr, type
+	WanInfo = prometheus.NewDesc(
+		MetricPrefix+"wan_info",
+		"Static info about the WAN interface (value is always 1), labels: alias, flags, lladdr, type",
+		[]string{"ifname", "alias", "flags", "lladdr", "type"}, nil)
+
+	// WAN MTU (separate family)
+	WanMtu = prometheus.NewDesc(
+		MetricPrefix+"wan_mtu",
+		"MTU of the WAN interface",
+		[]string{"ifname"}, nil)
+
 	// Per-interface network statistics (from getNetDevStats)
 	NetdevRxPackets = prometheus.NewDesc(
 		MetricPrefix+"netdev_rx_packets_total",

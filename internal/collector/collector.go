@@ -151,6 +151,11 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 
 	// whether we're running E2E/debug mode
 	e2e := os.Getenv("EXPERIA_E2E") == "1"
+	// whether to force overwrite alias with "wan" when WAN MAC match detected
+	// Default: false. Only enable when EXPERIA_FORCE_WAN_ALIAS is explicitly
+	// set to "1" or "true" (case-insensitive).
+	fa := os.Getenv("EXPERIA_FORCE_WAN_ALIAS")
+	forceWanAlias := strings.EqualFold(fa, "1") || strings.EqualFold(fa, "true")
 	debugLog := func(format string, args ...interface{}) {
 		if e2e {
 			log.Printf(format, args...)
@@ -290,6 +295,9 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 
 	// ...existing code...
 
+	// Track which canonical label we've identified as the WAN (first match).
+	wanLabelName := ""
+
 	// Process each candidate immediately and emit metrics per-interface.
 	// We no longer try to match names returned by the device. Instead we
 	// perform the requests for "ETH0","ETH1","ETH2","ETH3" and
@@ -304,6 +312,8 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		debugLog("DEBUG: getMIBs service=%s response length=%d", cand, len(resp))
 		// debugLog is gated by EXPERIA_E2E; print raw JSON when enabled.
 		debugLog("DEBUG RAW getMIBs service=%s: %s", cand, resp)
+		// (removed temporary RAW_CONTAINS diagnostic; keep only EXPERIA_E2E-gated
+		// debugLog calls above/below)
 		if resp == "" {
 			// still emit a zeroed metric so that collectors see the family when
 			// the device doesn't return useful data for a candidate. Use the
@@ -321,6 +331,8 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		if err != nil {
 			continue
 		}
+		// Print typed MIB fields for debugging in E2E mode
+		debugLog("DEBUG MIB_TYPED candidate=%s lladdress=%s alias=%s mtu=%v speed=%v", cand, mi.LLAddress, mi.Alias, mi.MTU, mi.CurrentBitRate)
 		if mi == (nemo.MIBInfo{}) {
 			// no usable data for this candidate, emit zeroed metrics
 			ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, 0.0, labelName)
@@ -366,6 +378,63 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 
+		// Try to detect WAN-facing interface by comparing the getWANStatus MAC
+		// to the MIBs LLAddress or by finding 'wan' substrings in aliases.
+		if wanStatusResp != "" && wanLabelName == "" {
+			norm := func(mac string) string {
+				if mac == "" {
+					return ""
+				}
+				out := ""
+				for _, r := range mac {
+					if (r >= '0' && r <= '9') || (r >= 'A' && r <= 'F') || (r >= 'a' && r <= 'f') {
+						out += string(r)
+					}
+				}
+				return strings.ToUpper(out)
+			}
+			wanMac := norm(wanStatus.Data.MACAddress)
+			ll := norm(mi.LLAddress)
+			matched := false
+			// Normalized MAC match (firmware may format MACs differently)
+			if wanMac != "" && ll != "" && wanMac == ll {
+				matched = true
+			}
+			if !matched && s != nil {
+				if am, ok := s["alias"].(map[string]any); ok {
+					for _, v := range am {
+						if entry, ok := v.(map[string]any); ok {
+							for _, vv := range entry {
+								if str, ok := vv.(string); ok && strings.Contains(strings.ToLower(str), "wan") {
+									matched = true
+									break
+								}
+							}
+						}
+						if matched {
+							break
+						}
+					}
+				}
+			}
+			if !matched {
+				if strings.Contains(strings.ToLower(mi.Alias), "wan") {
+					matched = true
+				}
+			}
+			if matched {
+				// record the first matched canonical label as WAN
+				wanLabelName = labelName
+				if forceWanAlias {
+					alias = "wan"
+				}
+				// explicit debug log showing detailed match context so we can
+				// correlate the emission with a later /metrics scrape.
+				debugLog("EMIT wan ifname=%s lladdr=%s wan_mac=%s service=%s idx=%d", labelName, mi.LLAddress, wanStatus.Data.MACAddress, cand, idx)
+				ch <- prometheus.MustNewConstMetric(metrics.WanIfname, prometheus.GaugeValue, 1.0, labelName)
+			}
+		}
+
 		// Emit metrics using the stable labelName (eth1..ethN).
 		debugLog("EMIT netdev ifname=%s mtu=%v tx=%v up=%v", labelName, mtu, tx, state)
 		ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, state, labelName)
@@ -374,6 +443,11 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, speed, labelName)
 		ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, lct, labelName)
 		ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+		// If this is the WAN candidate, also emit WAN-specific info and MTU
+		if wanLabelName != "" && wanLabelName == labelName {
+			ch <- prometheus.MustNewConstMetric(metrics.WanInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+			ch <- prometheus.MustNewConstMetric(metrics.WanMtu, prometheus.GaugeValue, mtu, labelName)
+		}
 
 		// Extract port parameters (bitrate/duplex/SetPort) and emit additional metrics
 		if pp, err := nemo.GetPortParamsFromMIBs([]byte(resp), cand); err == nil {
@@ -386,6 +460,16 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 				ch <- prometheus.MustNewConstMetric(metrics.NetdevPortDuplexEnabled, prometheus.GaugeValue, 0.0, labelName)
 			}
 			ch <- prometheus.MustNewConstMetric(metrics.NetdevPortSetPortInfo, prometheus.GaugeValue, 1.0, labelName, pp.SetPort)
+			if wanLabelName != "" && wanLabelName == labelName {
+				ch <- prometheus.MustNewConstMetric(metrics.WanPortCurrentBitrate, prometheus.GaugeValue, pp.CurrentBitRate, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanPortMaxBitRateSupported, prometheus.GaugeValue, pp.MaxBitRateSupported, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanPortMaxBitRateEnabled, prometheus.GaugeValue, pp.MaxBitRateEnabled, labelName)
+				if pp.DuplexModeEnabled {
+					ch <- prometheus.MustNewConstMetric(metrics.WanPortDuplexEnabled, prometheus.GaugeValue, 1.0, labelName)
+				} else {
+					ch <- prometheus.MustNewConstMetric(metrics.WanPortDuplexEnabled, prometheus.GaugeValue, 0.0, labelName)
+				}
+			}
 		}
 
 		// Also fetch per-interface statistics via getNetDevStats and export them.
@@ -445,6 +529,13 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxFifoErrors, prometheus.GaugeValue, ns.TxFifoErrors, labelName)
 			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxHeartbeatErrors, prometheus.GaugeValue, ns.TxHeartbeatErrors, labelName)
 			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxWindowErrors, prometheus.GaugeValue, ns.TxWindowErrors, labelName)
+			if wanLabelName != "" && wanLabelName == labelName {
+				ch <- prometheus.MustNewConstMetric(metrics.WanRxPackets, prometheus.GaugeValue, ns.RxPackets, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanTxPackets, prometheus.GaugeValue, ns.TxPackets, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanRxBytes, prometheus.GaugeValue, ns.RxBytes, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanTxBytes, prometheus.GaugeValue, ns.TxBytes, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanUp, prometheus.GaugeValue, state, labelName)
+			}
 		}
 	}
 

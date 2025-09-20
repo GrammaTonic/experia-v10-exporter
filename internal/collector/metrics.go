@@ -13,6 +13,19 @@ func (c *Experiav10Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapeErrorsMetric.Describe(ch)
 	// describe WAN / general metrics
 	ch <- metrics.IfupTime
+	// WAN-specific descriptors (new families)
+	ch <- metrics.WanIfname
+	ch <- metrics.WanInfo
+	ch <- metrics.WanMtu
+	ch <- metrics.WanPortCurrentBitrate
+	ch <- metrics.WanPortMaxBitRateSupported
+	ch <- metrics.WanPortMaxBitRateEnabled
+	ch <- metrics.WanPortDuplexEnabled
+	ch <- metrics.WanRxPackets
+	ch <- metrics.WanTxPackets
+	ch <- metrics.WanRxBytes
+	ch <- metrics.WanTxBytes
+	ch <- metrics.WanUp
 	nmc.PermissionErrors.Describe(ch)
 	// describe netdev metrics
 	ch <- nemo.NetdevUp
