@@ -71,6 +71,11 @@ func fmtError(s string) error { return &simpleErr{s} }
 
 type errReadCloser struct{}
 
+// simpleErr is a small error type used by tests to simulate failures.
+type simpleErr struct{ s string }
+
+func (e *simpleErr) Error() string { return e.s }
+
 func (e *errReadCloser) Read(b []byte) (int, error) { return 0, &simpleErr{"read error"} }
 func (e *errReadCloser) Close() error               { return nil }
 
