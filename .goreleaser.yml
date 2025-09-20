@@ -3,6 +3,11 @@ version: 2
 project_name: experia-v10-exporter
 
 builds:
+version: 2
+
+project_name: experia-v10-exporter
+
+builds:
   - id: experia-v10-exporter
     main: ./cmd/experia-v10-exporter
     binary: experia-v10-exporter
@@ -23,8 +28,6 @@ archives:
 
 changelog:
   use: git
-# Note: removed deprecated snapshot.name_template and archives.builds.
-# This minimal config is intended for goreleaser v2 `check` and `snapshot` runs.
 
 dockers:
   - image_templates:
@@ -38,7 +41,7 @@ release:
   github:
     owner: GrammaTonic
     name: experia-v10-exporter
-    draft: false
-    prerelease: false
+      - image_templates:
 
+          - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
 
