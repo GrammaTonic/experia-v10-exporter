@@ -1,45 +1,34 @@
 project_name: experia-v10-exporter
 
 builds:
-  - main: ./cmd/experia-v10-exporter
+  - id: experia-v10-exporter
+    main: ./cmd/experia-v10-exporter
     binary: experia-v10-exporter
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    env: [CGO_ENABLED=0]
+    ldflags: ['-s -w']
 
 archives:
-  - builds:
-      - experia-v10-exporter
-    format: tar.gz
-    files:
-      - README.md
-      - LICENSE
+  - id: default
+    formats: [tar.gz]
+    files: [README.md]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
 
 changelog:
   use: git
 
-snapshot:
-  name_template: "{{ .Tag }}-SNAPSHOT"
-
-dockers:
-  - image_templates:
-      - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
-    use: buildx
-    platforms:
-      - linux/amd64
-      - linux/arm64
+# Note: removed deprecated snapshot.name_template and archives.builds.
+# This minimal config is intended for goreleaser v2 `check` and `snapshot` runs.
 
 release:
   github:
     owner: GrammaTonic
     name: experia-v10-exporter
+    draft: false
+    prerelease: false
 
 archive:
   format_overrides:
