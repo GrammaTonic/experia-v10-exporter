@@ -16,7 +16,7 @@ func TestCollect_AuthFailurePlaceholderAlternate(t *testing.T) {
 	c := NewCollector(nil, "u", "p", 1)
 	// transport that simulates network error
 	c.client.Transport = testutil.MakeRoundTripper(func(req *http.Request) (*http.Response, error) {
-		return nil, &testutil.SimpleErr{"network"}
+		return nil, &testutil.SimpleErr{S: "network"}
 	})
 
 	reg := prometheus.NewRegistry()
