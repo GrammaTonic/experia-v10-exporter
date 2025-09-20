@@ -1,0 +1,28 @@
+[
+  {
+    "id": "getWANStatus",
+    "type": "fixed",
+    "body": "{\"service\":\"NMC\",\"method\":\"getWANStatus\",\"parameters\":{}}",
+    "description": "Fetch WAN status used to populate internet_connection/ifupTime metric.",
+    "location": "internal/collector/collector.go:198",
+    "assigned_to": "wanStatusResp"
+  },
+  {
+    "id": "getMIBs_template",
+    "type": "template",
+    "template": "{\"service\":\"NeMo.Intf.%s\",\"method\":\"getMIBs\",\"parameters\":{}}",
+    "description": "Per-interface MIB fetch (template) used to extract static netdev info; `%s` is replaced with candidate (e.g. ETH0).",
+    "location": "internal/collector/collector.go:303",
+    "assigned_to": "resp",
+    "example": "{\"service\":\"NeMo.Intf.ETH0\",\"method\":\"getMIBs\",\"parameters\":{}}"
+  },
+  {
+    "id": "getNetDevStats_template",
+    "type": "template",
+    "template": "{\"service\":\"NeMo.Intf.%s\",\"method\":\"getNetDevStats\",\"parameters\":{}}",
+    "description": "Per-interface statistics fetch (template) used to populate netdev_* counters; `%s` is replaced with candidate (e.g. ETH0).",
+    "location": "internal/collector/collector.go:527",
+    "assigned_to": "statsResp",
+    "example": "{\"service\":\"NeMo.Intf.ETH0\",\"method\":\"getNetDevStats\",\"parameters\":{}}"
+  }
+]

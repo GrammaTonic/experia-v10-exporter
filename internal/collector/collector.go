@@ -17,6 +17,9 @@ import (
 	"strings"
 	"time"
 
+	parsernemo "github.com/GrammaTonic/experia-v10-exporter/internal/collector/parser/nemo"
+	nemo "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nemo"
+	nmc "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nmc"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -195,7 +198,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// Fetch getWANStatus and export metrics
-	wanStatusResp := postFetch(`{"service":"NMC","method":"getWANStatus","parameters":{}}`)
+	wanStatusResp := postFetch(nmc.RequestBody())
 	debugLog("DEBUG: getWANStatus response length=%d", len(wanStatusResp))
 	// When running an E2E invocation, print the raw WAN JSON so we can
 	// diagnose firmware variations in the JSON schema. debugLog already
@@ -299,7 +302,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	for idx, cand := range candidates {
 		// canonical label: eth1..ethN (1-based)
 		labelName := fmt.Sprintf("eth%d", idx+1)
-		body := fmt.Sprintf(`{"service":"NeMo.Intf.%s","method":"getMIBs","parameters":{}}`, cand)
+		body := nemo.RequestBody(cand)
 		resp := postFetch(body)
 		debugLog("DEBUG: getMIBs service=%s response length=%d", cand, len(resp))
 		// debugLog is gated by EXPERIA_E2E; print raw JSON when enabled.
@@ -316,121 +319,20 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
 		}
-		var g map[string]any
-		if err := json.Unmarshal([]byte(resp), &g); err != nil {
+		// Parse and normalize MIB response using shared parser logic
+		norm, s, err := parsernemo.ParseMIBs([]byte(resp), cand)
+		if err != nil {
 			continue
 		}
-		// findStatus scans a decoded JSON map for a child that contains 'base' or 'netdev'.
-		var findStatus func(m map[string]any) map[string]any
-		findStatus = func(m map[string]any) map[string]any {
-			if m == nil {
-				return nil
-			}
-			if _, ok := m["base"]; ok {
-				return m
-			}
-			if _, ok := m["netdev"]; ok {
-				return m
-			}
-			for _, v := range m {
-				if child, ok := v.(map[string]any); ok {
-					if found := findStatus(child); found != nil {
-						return found
-					}
-				}
-			}
-			return nil
-		}
-
-		var s map[string]any
-		if ss := findStatus(g); ss != nil {
-			s = ss
-		} else if data, ok := g["data"].(map[string]any); ok {
-			if ss := findStatus(data); ss != nil {
-				s = ss
-			}
-		}
-		if s == nil {
-			if top, ok := g["status"].(map[string]any); ok {
-				if ss := findStatus(top); ss != nil {
-					s = ss
-				} else {
-					s = top
-				}
-			}
-		}
-		if s == nil {
+		if norm == nil {
+			// no usable data for this candidate, emit zeroed metrics
+			ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
-		}
-
-		// Merge base and netdev entries into a single inner map for this
-		// candidate. We no longer attempt to match by name; instead pick the
-		// first available entry from `base` or `netdev` if present. This makes
-		// labeling deterministic (we always use labelName) and avoids relying
-		// on device-provided names.
-		var innerMap map[string]any
-		// Prefer an entry whose key matches the requested candidate (e.g. "ETH0"
-		// or lowercased). This makes selection deterministic across map
-		// iteration orders and ensures metrics like TxQueueLen are read from
-		// the expected entry for the candidate when present.
-		if b, ok := s["base"].(map[string]any); ok {
-			if im, ok := b[cand].(map[string]any); ok {
-				innerMap = im
-			} else if im, ok := b[strings.ToLower(cand)].(map[string]any); ok {
-				innerMap = im
-			} else {
-				for _, v := range b {
-					if im, ok := v.(map[string]any); ok {
-						innerMap = im
-						break
-					}
-				}
-			}
-		}
-		if innerMap == nil {
-			if nd, ok := s["netdev"].(map[string]any); ok {
-				if im, ok := nd[cand].(map[string]any); ok {
-					innerMap = im
-				} else if im, ok := nd[strings.ToLower(cand)].(map[string]any); ok {
-					innerMap = im
-				} else {
-					for _, v := range nd {
-						if im, ok := v.(map[string]any); ok {
-							innerMap = im
-							break
-						}
-					}
-				}
-			}
-		}
-
-		// If there is a netdev section, capture the first netdev entry so we
-		// can merge its fields (prefer netdev values for MTU/Tx and similar
-		// fields). We don't attempt to match names here.
-		var ndFirst map[string]any
-		if nd, ok := s["netdev"].(map[string]any); ok {
-			if im, ok := nd[cand].(map[string]any); ok {
-				ndFirst = im
-			} else if im, ok := nd[strings.ToLower(cand)].(map[string]any); ok {
-				ndFirst = im
-			} else {
-				for _, v := range nd {
-					if im, ok := v.(map[string]any); ok {
-						ndFirst = im
-						break
-					}
-				}
-			}
-		}
-
-		// Build a normalized key/value map from innerMap and ndFirst for easy lookups.
-		// Prefers netdev (ndFirst) values when present.
-		norm := map[string]any{}
-		for k, v := range innerMap {
-			norm[strings.ToLower(k)] = v
-		}
-		for k, vv := range ndFirst {
-			norm[strings.ToLower(k)] = vv
 		}
 
 		// Helper extractors
@@ -503,11 +405,13 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			dtype = sStr
 		}
 
-		// alias: try to read top-level alias if present
+		// alias: try to read top-level alias if present (use status map returned by parser)
 		alias := ""
-		if am, ok := s["alias"].(map[string]any); ok {
-			if aStr, ok := am["Alias"].(string); ok {
-				alias = aStr
+		if s != nil {
+			if am, ok := s["alias"].(map[string]any); ok {
+				if aStr, ok := am["Alias"].(string); ok {
+					alias = aStr
+				}
 			}
 		}
 
@@ -523,7 +427,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		// Also fetch per-interface statistics via getNetDevStats and export them.
 		// This mirrors the device API call:
 		// {"service":"NeMo.Intf.ETH0","method":"getNetDevStats","parameters":{}}
-		statsBody := fmt.Sprintf(`{"service":"NeMo.Intf.%s","method":"getNetDevStats","parameters":{}}`, cand)
+		statsBody := nemo.RequestBodyStats(cand)
 		statsResp := postFetch(statsBody)
 		debugLog("DEBUG: getNetDevStats service=%s response length=%d", cand, len(statsResp))
 		debugLog("DEBUG RAW getNetDevStats service=%s: %s", cand, statsResp)
@@ -553,19 +457,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
 			continue
 		}
-		var sg map[string]any
-		if err := json.Unmarshal([]byte(statsResp), &sg); err == nil {
-			// Prefer data map when present
-			var data map[string]any
-			if d, ok := sg["data"].(map[string]any); ok {
-				data = d
-			} else if top, ok := sg["status"].(map[string]any); ok {
-				data = top
-			} else {
-				// try the top-level map itself
-				data = sg
-			}
-
+		if data, err := parsernemo.ParseNetDevStats([]byte(statsResp)); err == nil {
 			getNum := func(k string) (float64, bool) {
 				if data == nil {
 					return 0, false
