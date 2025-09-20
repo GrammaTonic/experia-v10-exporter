@@ -76,6 +76,7 @@ These instructions are auto-generated from the repository contents. They are tec
 - `scripts/`: utility scripts (if any).
 - `docker/`: Dockerfiles or related files (if any).
 - `examples/modem_json/`: example JSON outputs from the modem.
+- `test-output/`: example outputs for tests (if any).
 
 ## Priority guidelines
 1. Respect the Go toolchain and the Go version declared in `go.mod` (1.25.1). Do not use language features newer than this version.

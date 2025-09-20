@@ -33,4 +33,11 @@ pkg/
 
 # Local experiments / secrets
 .experia.env
+# Local environment files (ignore real credentials/configs; keep example files under examples/)
+.env
+.env.local
+# Local test output and logs
 test-output/
+
+# Keep committed example env files (negation ensures examples/*.example are not ignored)
+!examples/env/*.example

@@ -66,6 +66,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=registry,ref=ghcr.io/${{ steps.image.outputs.image }}:buildx-cache
           cache-to: type=registry,ref=ghcr.io/${{ steps.image.outputs.image }}:buildx-cache,mode=max
+          # Build using the relocated Dockerfile in the docker/ directory
+          file: docker/Dockerfile
+          context: .
           tags: |
             ghcr.io/${{ steps.image.outputs.image }}:ci
             ghcr.io/${{ steps.image.outputs.image }}:latest
