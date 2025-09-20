@@ -11,6 +11,19 @@ These instructions are auto-generated from the repository contents. They are tec
 - Runtime: CLI/http server exporting `/metrics` endpoint for Prometheus scraping.
 - Configuration via environment variables: `EXPERIA_V10_*` family.
 
+## Folder structure
+- `cmd/experia-v10-exporter/`: main program entrypoint.
+- `internal/collector/`: main logic for scraping the Experia V10 router and exposing metrics.
+- `internal/testutil/`: test helpers for HTTP mocking and Prometheus metric assertions.
+- `.github/`: GitHub workflows and Copilot instructions.
+- `go.mod` and `go.sum`: dependency management.
+- `README.md`: project overview and usage instructions.
+- `docs/`: documentation (if any).
+- `examples/`: example configurations or usage (if any).
+- `scripts/`: utility scripts (if any).
+- `docker/`: Dockerfiles or related files (if any).
+- `examples/modem_json/`: example JSON outputs from the modem.
+
 ## Priority guidelines
 1. Respect the Go toolchain and the Go version declared in `go.mod` (1.25.1). Do not use language features newer than this version.
 2. Use the existing module path `github.com/GrammaTonic/experia-v10-exporter` for import paths within the repository.

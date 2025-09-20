@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -17,7 +18,7 @@ import (
 func TestCollect_ParsesMIBsAndEmitsNetdevMetrics(t *testing.T) {
 	// Create collector and override client transport to return sampleMibJSON
 	c := NewCollector(net.ParseIP("127.0.0.1"), "u", "p", 1*time.Second)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		// Read request body to determine which API is being called
 		b, _ := io.ReadAll(req.Body)
 		// restore body for any callers that might read it again
@@ -29,7 +30,7 @@ func TestCollect_ParsesMIBsAndEmitsNetdevMetrics(t *testing.T) {
 		} else if bytes.Contains(b, []byte("getWANStatus")) {
 			respBody = `{"status":true,"data":{"ConnectionState":"Connected","LinkType":"ETH","Protocol":"DHCP","IPAddress":"1.2.3.4","MACAddress":"aa:bb:cc:dd:ee:ff"}}`
 		} else if bytes.Contains(b, []byte("getMIBs")) {
-			respBody = sampleMibJSON
+			respBody = testutil.SampleMibJSON
 		} else {
 			// Default: return empty success
 			respBody = `{"status":true}`

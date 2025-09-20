@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -22,7 +23,7 @@ func TestCollect_UsesOutputJSON_DiscoverAndExportETH0Eth1(t *testing.T) {
 	}
 
 	c := NewCollector(net.ParseIP("127.0.0.1"), "u", "p", 1*time.Second)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		b, _ := io.ReadAll(req.Body)
 		req.Body = io.NopCloser(bytes.NewReader(b))
 		var respBody string

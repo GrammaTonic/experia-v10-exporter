@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -50,7 +51,7 @@ func TestAuthenticateMalformedJSON(t *testing.T) {
 	defer ts.Close()
 
 	c := NewCollector(nil, "u", "p", 1)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		// redirect to test server
 		newReq, _ := http.NewRequest(req.Method, ts.URL, req.Body)
 		newReq.Header = req.Header.Clone()
@@ -66,7 +67,7 @@ func TestAuthenticateMalformedJSON(t *testing.T) {
 func TestFetchURLReadError(t *testing.T) {
 	// Make client with Transport that returns a response with a body that errors on Read
 	c := NewCollector(nil, "", "", 1)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		r := &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader([]byte("ok"))),
@@ -92,18 +93,18 @@ func TestFetchURLErrors(t *testing.T) {
 	}
 
 	// case: client.Do returns error
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		return nil, &simpleErr{"network error"}
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, &testutil.SimpleErr{S: "network error"}
 	})
 	if _, err := c.fetchURL(context.Background(), "GET", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error when client.Do fails")
 	}
 
 	// case: resp.Body.Read returns error
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		r := &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       &errReadCloser{},
+			Body:       &testutil.ErrReadCloser{},
 		}
 		return r, nil
 	})
@@ -112,21 +113,19 @@ func TestFetchURLErrors(t *testing.T) {
 	}
 }
 
-// errReadCloser provided by testhelpers_test.go
-
 func TestAuthenticateDoAndReadErrors(t *testing.T) {
 	// client.Do returns error
 	c := NewCollector(net.ParseIP("192.0.2.10"), "u", "p", 1)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		return nil, &simpleErr{"do error"}
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, &testutil.SimpleErr{S: "do error"}
 	})
 	if _, err := c.authenticate(); err == nil {
 		t.Fatalf("expected authenticate to fail when client.Do errors")
 	}
 
 	// client.Do returns response with body read error
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		r := &http.Response{StatusCode: http.StatusOK, Body: &errReadCloser{}}
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		r := &http.Response{StatusCode: http.StatusOK, Body: &testutil.ErrReadCloser{}}
 		return r, nil
 	})
 	if _, err := c.authenticate(); err == nil {
@@ -138,7 +137,7 @@ func TestAuthenticateDoAndReadErrors(t *testing.T) {
 func TestAuthenticateEmptyContextID(t *testing.T) {
 	c := NewCollector(net.ParseIP("192.0.2.20"), "u", "p", 1)
 	// Transport returns a valid JSON but empty contextID
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		r := &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader([]byte(`{"data":{"contextID":""}}`))),
@@ -156,7 +155,7 @@ func TestAuthenticateCookieJarSet(t *testing.T) {
 	ip := net.ParseIP("192.0.2.21")
 	c := NewCollector(ip, "u", "p", 1)
 	// Create a response that sets a cookie and returns a valid contextID
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		h := make(http.Header)
 		h.Add("Set-Cookie", "sessionid=abc123; Path=/")
 		r := &http.Response{
@@ -185,9 +184,9 @@ func TestAuthenticateCookieJarSet(t *testing.T) {
 // TestFetchURLHeaders ensures headers passed into fetchURL are forwarded on the outgoing request
 func TestFetchURLHeaders(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Header.Get("X-Test-Header") != "yes" {
-			return nil, &simpleErr{"header missing"}
+			return nil, &testutil.SimpleErr{S: "header missing"}
 		}
 		r := &http.Response{
 			StatusCode: http.StatusOK,
@@ -220,7 +219,7 @@ func TestAuthenticateNoCookieJar(t *testing.T) {
 	// ensure Jar is nil
 	c.client.Jar = nil
 	// Transport returns valid JSON with Set-Cookie header and contextID
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		h := make(http.Header)
 		h.Add("Set-Cookie", "sessionid=xyz; Path=/")
 		r := &http.Response{
@@ -252,7 +251,7 @@ func TestFetchURLInvalidURL_NonTag(t *testing.T) {
 func TestAuthenticateJSONMarshalError_NonTag(t *testing.T) {
 	old := jsonMarshal
 	defer func() { jsonMarshal = old }()
-	jsonMarshal = func(v any) ([]byte, error) { return nil, &simpleErr{"marshal fail"} }
+	jsonMarshal = func(v any) ([]byte, error) { return nil, &testutil.SimpleErr{S: "marshal fail"} }
 
 	c := NewCollector(net.ParseIP("192.0.2.40"), "u", "p", 1)
 	if _, err := c.authenticate(); err == nil {
@@ -287,7 +286,9 @@ func TestSetCookiesFromResponseNilInputs(t *testing.T) {
 func TestAuthenticateNewRequestError_NonTag(t *testing.T) {
 	old := newRequest
 	defer func() { newRequest = old }()
-	newRequest = func(method, url string, body io.Reader) (*http.Request, error) { return nil, &simpleErr{"bad request"} }
+	newRequest = func(method, url string, body io.Reader) (*http.Request, error) {
+		return nil, &testutil.SimpleErr{S: "bad request"}
+	}
 
 	c := NewCollector(net.ParseIP("192.0.2.31"), "u", "p", 1)
 	if _, err := c.authenticate(); err == nil {
@@ -295,12 +296,10 @@ func TestAuthenticateNewRequestError_NonTag(t *testing.T) {
 	}
 }
 
-// (removed TestAuthenticateReqURLNil — replaced by resp.Request URL handling in auth.go)
+// Additional tests moved to test-only override files where appropriate.
 
 // TestAuthenticateNewRequestError forces an invalid apiUrl to trigger http.NewRequest error in authenticate
 // moved to test-only file metrics_test_overrides.go
 
 // TestFetchURLInvalidURL forces fetchURL to fail on NewRequest by passing an invalid URL
 // moved to test-only file metrics_test_overrides.go
-
-// TestAuthenticateJSONMarshalError moved to test-only file metrics_test_overrides.go

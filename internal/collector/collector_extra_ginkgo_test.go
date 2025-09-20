@@ -10,6 +10,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 )
 
 var _ = Describe("collector extra cases", func() {
@@ -28,7 +30,7 @@ var _ = Describe("collector extra cases", func() {
 		jar, _ := cookiejar.New(nil)
 		c.client.Jar = jar
 		// rewrite transport to test server
-		c.client.Transport = rewriteTransport(ts.URL)
+		c.client.Transport = testutil.RewriteTransport(ts.URL)
 
 		ctx, err := c.authenticate()
 		Expect(err).ToNot(HaveOccurred())
@@ -50,7 +52,7 @@ var _ = Describe("collector extra cases", func() {
 		defer ts.Close()
 
 		c := NewCollector(net.ParseIP("192.0.2.21"), "u", "p", 1*time.Second)
-		c.client.Transport = rewriteTransport(ts.URL)
+		c.client.Transport = testutil.RewriteTransport(ts.URL)
 
 		b, err := c.fetchURL(context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "1"}, nil)
 		Expect(err).ToNot(HaveOccurred())

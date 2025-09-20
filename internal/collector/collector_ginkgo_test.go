@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -49,7 +50,7 @@ var _ = Describe("Experia Collector", func() {
 		c := NewCollector(ip, "user", "pass", 2*time.Second)
 
 		// Replace client's Transport to point to test server by modifying requests' URL on the fly.
-		c.client.Transport = rewriteTransport(ts.URL)
+		c.client.Transport = testutil.RewriteTransport(ts.URL)
 
 		// Collect metrics into buffer channel
 		ch := make(chan prometheus.Metric, 10)
@@ -89,7 +90,7 @@ var _ = Describe("Experia Collector", func() {
 					w.WriteHeader(http.StatusOK)
 					w.Write(b)
 				},
-				setupTransport: func(c *Experiav10Collector, tsURL string) { c.client.Transport = rewriteTransport(tsURL) },
+				setupTransport: func(c *Experiav10Collector, tsURL string) { c.client.Transport = testutil.RewriteTransport(tsURL) },
 				validate: func(c *Experiav10Collector, ch chan prometheus.Metric) {
 					// Expect to receive up metric (gauge=0) and auth error counter metric
 					var sawUp bool
@@ -127,7 +128,7 @@ var _ = Describe("Experia Collector", func() {
 					w.WriteHeader(http.StatusOK)
 					w.Write(b)
 				},
-				setupTransport: func(c *Experiav10Collector, tsURL string) { c.client.Transport = rewriteTransport(tsURL) },
+				setupTransport: func(c *Experiav10Collector, tsURL string) { c.client.Transport = testutil.RewriteTransport(tsURL) },
 				validate: func(c *Experiav10Collector, ch chan prometheus.Metric) {
 					// we already incremented permissionErrors via Collect; verify counter increased by 1
 					// note: permissionErrors is a package-level counter
@@ -135,7 +136,7 @@ var _ = Describe("Experia Collector", func() {
 					for range ch {
 					}
 					// read via helper
-					after := readCounterValue(permissionErrors)
+					after := testutil.ReadCounterValue(permissionErrors)
 					Expect(after).To(BeNumerically(
 						">=", 1.0))
 				},
@@ -157,13 +158,13 @@ var _ = Describe("Experia Collector", func() {
 				},
 				setupTransport: func(c *Experiav10Collector, tsURL string) {
 					// allow auth but simulate network error for subsequent fetches
-					c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 						if req.Header.Get("Authorization") == "X-Sah-Login" {
 							newReq, _ := http.NewRequest(req.Method, tsURL, req.Body)
 							newReq.Header = req.Header.Clone()
 							return http.DefaultTransport.RoundTrip(newReq)
 						}
-						return nil, fmtError("simulated network error")
+						return nil, testutil.FmtError("simulated network error")
 					})
 				},
 				validate: func(c *Experiav10Collector, ch chan prometheus.Metric) {
@@ -186,7 +187,7 @@ var _ = Describe("Experia Collector", func() {
 				if tc.setupTransport != nil {
 					tc.setupTransport(c, ts.URL)
 				} else {
-					c.client.Transport = rewriteTransport(ts.URL)
+					c.client.Transport = testutil.RewriteTransport(ts.URL)
 				}
 
 				ch := make(chan prometheus.Metric, 10)

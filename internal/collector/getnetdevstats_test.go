@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -17,7 +18,7 @@ import (
 func TestCollect_ParsesGetNetDevStats(t *testing.T) {
 	// Create collector and override client transport to return canned responses
 	c := NewCollector(net.ParseIP("127.0.0.1"), "u", "p", 1*time.Second)
-	c.client.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		b, _ := io.ReadAll(req.Body)
 		req.Body = io.NopCloser(bytes.NewReader(b))
 
@@ -30,18 +31,18 @@ func TestCollect_ParsesGetNetDevStats(t *testing.T) {
 		case bytes.Contains(b, []byte("getMIBs")):
 			// Reuse the existing sample that provides a usable 'base' section so
 			// the collector proceeds to call getNetDevStats for each candidate.
-			respBody = sampleMibJSON
+			respBody = testutil.SampleMibJSON
 		case bytes.Contains(b, []byte("getNetDevStats")):
 			// Determine which interface was requested and return distinct
 			// numeric values per candidate so we can assert label mapping.
 			if bytes.Contains(b, []byte("ETH0")) {
-				respBody = fmt.Sprintf(sampleStatsFmt, 101, 201, 1001, 2001, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+				respBody = fmt.Sprintf(testutil.SampleStatsFmt, 101, 201, 1001, 2001, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
 			} else if bytes.Contains(b, []byte("ETH1")) {
-				respBody = fmt.Sprintf(sampleStatsFmt, 102, 202, 1002, 2002, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+				respBody = fmt.Sprintf(testutil.SampleStatsFmt, 102, 202, 1002, 2002, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
 			} else if bytes.Contains(b, []byte("ETH2")) {
-				respBody = fmt.Sprintf(sampleStatsFmt, 103, 203, 1003, 2003, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+				respBody = fmt.Sprintf(testutil.SampleStatsFmt, 103, 203, 1003, 2003, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
 			} else if bytes.Contains(b, []byte("ETH3")) {
-				respBody = fmt.Sprintf(sampleStatsFmt, 104, 204, 1004, 2004, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+				respBody = fmt.Sprintf(testutil.SampleStatsFmt, 104, 204, 1004, 2004, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
 			} else {
 				respBody = `{"status":true}`
 			}

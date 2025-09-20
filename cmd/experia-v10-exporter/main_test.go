@@ -9,12 +9,9 @@ import (
 	"time"
 
 	"github.com/GrammaTonic/experia-v10-exporter/internal/collector"
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
-
-type simpleErr struct{ s string }
-
-func (e *simpleErr) Error() string { return e.s }
 
 func TestSetupRegistersCollector(t *testing.T) {
 	// Set minimal env vars
@@ -204,7 +201,7 @@ func TestRunMainListenFail(t *testing.T) {
 
 	http.DefaultServeMux = http.NewServeMux()
 	origListen := listenAndServe
-	listenAndServe = func(addr string, handler http.Handler) error { return &simpleErr{"listen fail"} }
+	listenAndServe = func(addr string, handler http.Handler) error { return &testutil.SimpleErr{S: "listen fail"} }
 	defer func() { listenAndServe = origListen }()
 
 	if err := runMain(); err == nil {
@@ -299,7 +296,7 @@ func TestMainExitPaths(t *testing.T) {
 	http.DefaultServeMux = http.NewServeMux()
 
 	origListen := listenAndServe
-	listenAndServe = func(addr string, handler http.Handler) error { return &simpleErr{"listen fail"} }
+	listenAndServe = func(addr string, handler http.Handler) error { return &testutil.SimpleErr{S: "listen fail"} }
 	defer func() { listenAndServe = origListen }()
 
 	called = false

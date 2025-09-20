@@ -9,6 +9,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 )
 
 var _ = Describe("collector cover additional", func() {
@@ -20,7 +22,7 @@ var _ = Describe("collector cover additional", func() {
 		defer ts.Close()
 
 		c := NewCollector(net.ParseIP("192.0.2.30"), "u", "p", 1*time.Second)
-		c.client.Transport = rewriteTransport(ts.URL)
+		c.client.Transport = testutil.RewriteTransport(ts.URL)
 		_, err := c.authenticate()
 		Expect(err).To(HaveOccurred())
 	})
@@ -36,7 +38,7 @@ var _ = Describe("collector cover additional", func() {
 		defer ts.Close()
 
 		c := NewCollector(net.ParseIP("192.0.2.31"), "u", "p", 1*time.Second)
-		c.client.Transport = rewriteTransport(ts.URL)
+		c.client.Transport = testutil.RewriteTransport(ts.URL)
 
 		b, err := c.fetchURL(context.Background(), "GET", "http://example/", nil, nil)
 		Expect(err).ToNot(HaveOccurred())
