@@ -81,32 +81,54 @@ func TestCollectorFullFlow(t *testing.T) {
 		t.Fatalf("expected some metrics, got none")
 	}
 
-	// find a specific metric family (netdev_up) and assert it exists
-	found := false
-	for _, mf := range mfs {
-		if mf.GetName() == "experia_v10_up" || mf.GetName() == "experia_v10_netdev_up" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected netdev or up metrics present")
-	}
-
 	// also assert that session token is stored
 	if c.SessionToken() == "" {
 		t.Fatalf("expected session token to be set after Login")
 	}
 
-	// sample check: read authErrorsMetric value via prometheus path
-	var pm dto.Metric
-	ch := make(chan prometheus.Metric, 1)
-	go func() { c.authErrorsMetric.Collect(ch); close(ch) }()
-	for m := range ch {
-		if err := m.Write(&pm); err == nil {
-			// value present (may be zero)
-			_ = pm
+	// Look for concrete metrics: netdev_up and netdev_rx_bytes_total for label ifname="eth1"
+	wantIf := "eth1"
+	var gotNetdevUp *dto.Metric
+	var gotRxBytes *dto.Metric
+	for _, mf := range mfs {
+		name := mf.GetName()
+		if name != "experia_v10_netdev_up" && name != "experia_v10_netdev_rx_bytes_total" {
+			continue
 		}
+		for _, m := range mf.Metric {
+			// find label 'ifname' == wantIf
+			for _, lp := range m.Label {
+				if lp.GetName() == "ifname" && lp.GetValue() == wantIf {
+					if name == "experia_v10_netdev_up" {
+						gotNetdevUp = m
+					}
+					if name == "experia_v10_netdev_rx_bytes_total" {
+						gotRxBytes = m
+					}
+				}
+			}
+		}
+	}
+
+	if gotNetdevUp == nil {
+		t.Fatalf("netdev_up metric for %s not found", wantIf)
+	}
+	if gotRxBytes == nil {
+		t.Fatalf("netdev_rx_bytes_total metric for %s not found", wantIf)
+	}
+
+	// Assert expected values: netdev_up == 1, rx_bytes == 3 (from SampleStatsFmt args)
+	if gotNetdevUp.Gauge == nil {
+		t.Fatalf("netdev_up metric for %s is not a gauge", wantIf)
+	}
+	if gotNetdevUp.Gauge.GetValue() != 1.0 {
+		t.Fatalf("unexpected netdev_up value for %s: got %v, want 1.0", wantIf, gotNetdevUp.Gauge.GetValue())
+	}
+	if gotRxBytes.Gauge == nil {
+		t.Fatalf("netdev_rx_bytes_total metric for %s is not a gauge", wantIf)
+	}
+	if gotRxBytes.Gauge.GetValue() != 3.0 {
+		t.Fatalf("unexpected netdev_rx_bytes_total for %s: got %v, want 3.0", wantIf, gotRxBytes.Gauge.GetValue())
 	}
 }
 
