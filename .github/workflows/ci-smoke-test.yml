@@ -1,0 +1,50 @@
+name: CI Smoke Test - Docker image and metrics
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Build image and verify /metrics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -f docker/Dockerfile -t experia-smoke:latest .
+
+      - name: Run exporter container
+        run: |
+          # Run container in background and publish metrics port
+          docker run -d --name experia-smoke -p 9100:9100 experia-smoke:latest
+
+      - name: Wait for /metrics to show wan discovery
+        env:
+          ATTEMPTS: 60
+        run: |
+          set -eo pipefail
+          for i in $(seq 1 "$ATTEMPTS"); do
+            if curl -sS http://localhost:9100/metrics | grep -q '^experia_v10_wan_ifname'; then
+              echo "found experia_v10_wan_ifname"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Timed out waiting for experia_v10_wan_ifname"
+          echo "Container logs:"
+          docker logs experia-smoke || true
+          # fail the job
+          exit 1
+
+      - name: Stop and remove container (success)
+        if: success()
+        run: docker rm -f experia-smoke || true
+
+      - name: Stop and remove container (always)
+        if: failure()
+        run: docker rm -f experia-smoke || true
