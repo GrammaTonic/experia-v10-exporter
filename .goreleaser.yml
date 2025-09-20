@@ -1,0 +1,47 @@
+project_name: experia-v10-exporter
+
+builds:
+  - main: ./cmd/experia-v10-exporter
+    binary: experia-v10-exporter
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+
+archives:
+  - builds:
+      - experia-v10-exporter
+    format: tar.gz
+    files:
+      - README.md
+      - LICENSE
+
+changelog:
+  use: git
+
+snapshot:
+  name_template: "{{ .Tag }}-SNAPSHOT"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
+    use: buildx
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+release:
+  github:
+    owner: GrammaTonic
+    name: experia-v10-exporter
+
+archive:
+  format_overrides:
+    - goos: windows
+      format: zip

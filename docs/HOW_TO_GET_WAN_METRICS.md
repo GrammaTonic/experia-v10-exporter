@@ -37,3 +37,9 @@ the respose is:
 
 the respose is: 
 {"status":{"RxPackets":140045735,"TxPackets":53436844,"RxBytes":7460867824,"TxBytes":8258926237,"RxErrors":0,"TxErrors":0,"RxDropped":0,"TxDropped":0,"Multicast":2238353,"Collisions":0,"RxLengthErrors":0,"RxOverErrors":0,"RxCrcErrors":0,"RxFrameErrors":0,"RxFifoErrors":0,"RxMissedErrors":0,"TxAbortedErrors":0,"TxCarrierErrors":0,"TxFifoErrors":0,"TxHeartbeatErrors":0,"TxWindowErrors":0}}
+
+## Notes about WAN discovery and exporter health
+
+- The exporter includes a deterministic WAN detection and exposes the discovery metric `experia_v10_wan_ifname{ifname="<IFNAME>"}` which indicates the interface the collector considers the WAN.
+- When testing with Docker, the image includes a tiny `/probe` binary used by the `HEALTHCHECK` to wait until `/metrics` is available. If your Docker image lacks `/probe`, the healthcheck will fail with an exec error.
+- To reproduce the MIB calls manually, compare `LLAddress` (MAC) and `Alias` fields from the `get` and `getNetDevStats` calls shown above to determine which interface is the WAN.
