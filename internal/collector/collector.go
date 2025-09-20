@@ -104,12 +104,13 @@ func NewCollector(ip net.IP, username, password string, timeout time.Duration, c
 // established session (cookies + token headers). It returns an error if
 // authentication fails.
 func (c *Experiav10Collector) Login() error {
-	sess, err := c.authenticate()
+	apiURL := fmt.Sprintf(apiUrl, c.ip.String())
+	token, err := connectivity.Authenticate(c.client, apiURL, c.username, c.password, newRequest, jsonMarshal)
 	if err != nil {
 		return err
 	}
 	c.sessionMu.Lock()
-	c.session = sess
+	c.session = sessionContext{Token: token}
 	c.sessionMu.Unlock()
 	return nil
 }
@@ -123,7 +124,8 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	c.sessionMu.RUnlock()
 	if sess.Token == "" {
 		// Try to establish a session for this scrape
-		newSess, err := c.authenticate()
+		apiURL := fmt.Sprintf(apiUrl, c.ip.String())
+		token, err := connectivity.Authenticate(c.client, apiURL, c.username, c.password, newRequest, jsonMarshal)
 		if err != nil {
 			c.authErrorsMetric.Inc()
 			c.upMetric.Set(0)
@@ -143,9 +145,9 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		c.sessionMu.Lock()
-		c.session = newSess
+		c.session = sessionContext{Token: token}
 		c.sessionMu.Unlock()
-		sess = newSess
+		sess = sessionContext{Token: token}
 	}
 
 	// whether we're running E2E/debug mode
@@ -184,7 +186,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		reqCtx, cancel := context.WithTimeout(context.Background(), c.client.Timeout)
 		defer cancel()
 
-		resp, err := c.fetchURL(reqCtx, "POST", url, headers, []byte(body))
+		resp, err := connectivity.FetchURL(c.client, reqCtx, "POST", url, headers, []byte(body))
 		if err != nil {
 			log.Printf("ERROR: failed to fetch %s: %v", body, err)
 			c.scrapeErrorsMetric.Inc()
@@ -623,4 +625,20 @@ func (c *Experiav10Collector) SessionToken() string {
 	c.sessionMu.RLock()
 	defer c.sessionMu.RUnlock()
 	return c.session.Token
+}
+
+// authenticate is retained for test compatibility: many tests call the
+// collector's authenticate method directly. It wraps the exported
+// connectivity.Authenticate and returns the sessionContext on success.
+func (c *Experiav10Collector) authenticate() (sessionContext, error) {
+	apiURL := fmt.Sprintf(apiUrl, c.ip.String())
+	token, err := connectivity.Authenticate(c.client, apiURL, c.username, c.password, newRequest, jsonMarshal)
+	if err != nil {
+		return sessionContext{}, err
+	}
+	// store token on the collector
+	c.sessionMu.Lock()
+	c.session = sessionContext{Token: token}
+	c.sessionMu.Unlock()
+	return sessionContext{Token: token}, nil
 }

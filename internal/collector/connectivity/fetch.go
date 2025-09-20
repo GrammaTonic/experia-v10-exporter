@@ -1,4 +1,4 @@
-package collector
+package connectivity
 
 import (
 	"bytes"
@@ -8,11 +8,10 @@ import (
 	"net/http"
 )
 
-// fetchURL performs an HTTP request with the given context, method, url,
-// headers, and body, and returns the response body. It returns an error for
-// non-2xx HTTP responses so callers can explicitly detect permission-denied
-// or other HTTP errors.
-func (c *Experiav10Collector) fetchURL(ctx context.Context, method, url string, headers map[string]string, body []byte) ([]byte, error) {
+// FetchURL performs an HTTP request using the provided client. It mirrors the
+// behavior previously implemented on the collector type: returns response
+// body and treats non-2xx responses as errors.
+func FetchURL(client *http.Client, ctx context.Context, method, url string, headers map[string]string, body []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
@@ -20,7 +19,7 @@ func (c *Experiav10Collector) fetchURL(ctx context.Context, method, url string, 
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := c.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +28,6 @@ func (c *Experiav10Collector) fetchURL(ctx context.Context, method, url string, 
 	if err != nil {
 		return nil, err
 	}
-	// Treat non-2xx responses as errors so callers can react accordingly.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("http status %d: %s", resp.StatusCode, string(respBody))
 	}

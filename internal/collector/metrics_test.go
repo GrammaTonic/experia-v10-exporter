@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -75,7 +76,7 @@ func TestFetchURLReadError(t *testing.T) {
 		return r, nil
 	})
 	// fetchURL should succeed with our body; assert content
-	b, err := c.fetchURL(context.Background(), "GET", "http://example/", nil, nil)
+	b, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", nil, nil)
 	if err != nil {
 		t.Fatalf("fetchURL failed: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestFetchURLErrors(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
 
 	// case: empty method -> http.NewRequest should error
-	if _, err := c.fetchURL(context.Background(), "", "http://example", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error for empty method")
 	}
 
@@ -96,7 +97,7 @@ func TestFetchURLErrors(t *testing.T) {
 	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, &testutil.SimpleErr{S: "network error"}
 	})
-	if _, err := c.fetchURL(context.Background(), "GET", "http://example", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error when client.Do fails")
 	}
 
@@ -108,7 +109,7 @@ func TestFetchURLErrors(t *testing.T) {
 		}
 		return r, nil
 	})
-	if _, err := c.fetchURL(context.Background(), "GET", "http://example", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error when reading body fails")
 	}
 }
@@ -195,7 +196,7 @@ func TestFetchURLHeaders(t *testing.T) {
 		}
 		return r, nil
 	})
-	b, err := c.fetchURL(context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "yes"}, nil)
+	b, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "yes"}, nil)
 	if err != nil {
 		t.Fatalf("fetchURL failed: %v", err)
 	}
@@ -207,7 +208,7 @@ func TestFetchURLHeaders(t *testing.T) {
 // TestFetchURLEmptyURL ensures http.NewRequest errors when URL is empty
 func TestFetchURLEmptyURL(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
-	if _, err := c.fetchURL(context.Background(), "GET", "", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "", nil, nil); err == nil {
 		t.Fatalf("expected error for empty URL")
 	}
 }
@@ -242,7 +243,7 @@ func TestAuthenticateNoCookieJar(t *testing.T) {
 // TestFetchURLInvalidURL_NonTag verifies fetchURL returns an error for an invalid URL (non-test build)
 func TestFetchURLInvalidURL_NonTag(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
-	if _, err := c.fetchURL(context.Background(), "GET", "http://\x00/", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://\x00/", nil, nil); err == nil {
 		t.Fatalf("expected fetchURL to fail for invalid URL")
 	}
 }
