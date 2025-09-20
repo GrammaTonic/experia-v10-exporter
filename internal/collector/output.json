@@ -1,255 +1,63 @@
 {
+  "status": true,
+  "data": {
     "status": {
-        "base": {
-            "ETH0": {
-                "Name": "ETH0",
-                "Enable": true,
-                "Status": true,
-                "Flags": "enabled netdev vlan netdev-monitor bcmvlan eth_untagged netdev-bound netdev-up inbridge up",
-                "ULIntf": {
-                    "bridge": {
-                        "Name": "bridge"
-                    }
-                },
-                "LLIntf": {
-                    "eth1": {
-                        "Name": "eth1"
-                    }
-                }
-            },
-            "eth1": {
-                "Name": "eth1",
-                "Enable": true,
-                "Status": true,
-                "Flags": "enabled netdev eth bcmeth physical netdev-monitor statmon netdev-bound netdev-up up",
-                "ULIntf": {
-                    "ETH0": {
-                        "Name": "ETH0"
-                    },
-                    "ethguest0": {
-                        "Name": "ethguest0"
-                    },
-                    "avlan_t": {
-                        "Name": "avlan_t"
-                    }
-                },
-                "LLIntf": {}
-            }
+      "base": {
+        "ETH0": {
+          "Name": "ETH0",
+          "Enable": true,
+          "Status": true,
+          "Flags": "enabled netdev",
+          "LLAddress": "AA:BB:CC:00:00:01",
+          "TxQueueLen": 0,
+          "MTU": 1500,
+          "NetDevState": "up",
+          "CurrentBitRate": 1000,
+          "LastChangeTime": 10
         },
-        "6rd": {},
-        "alias": {
-            "ETH0": {
-                "Alias": "cpe-ETH0"
-            },
-            "eth1": {
-                "Alias": "cpe-eth1"
-            }
+        "ETH1": {
+          "Name": "ETH1",
+          "Enable": true,
+          "Status": true,
+          "Flags": "enabled netdev",
+          "LLAddress": "AA:BB:CC:00:00:02",
+          "TxQueueLen": 1000,
+          "MTU": 1500,
+          "NetDevState": "up",
+          "CurrentBitRate": 1000,
+          "LastChangeTime": 11
         },
-        "atm": {},
-        "bcmvlan": {
-            "ETH0": {
-                "DscpToPbitsTable": "",
-                "QoS": {
-                    "default_rx": {
-                        "Enable": true,
-                        "Tags": 1,
-                        "SetVlanId": 4095,
-                        "SetPbits": -1,
-                        "SetDscp": -1,
-                        "SetEthertype": 0,
-                        "DscpToPbits": -1,
-                        "PushTag": false,
-                        "PopTag": false,
-                        "Direction": false,
-                        "FilterVlanId": 4095,
-                        "FilterSkbPriority": -1,
-                        "FilterSkbMarkFlowid": -1,
-                        "FilterEthertype": 0,
-                        "FilterVlanDevMacAddr": -1
-                    },
-                    "default_tx": {
-                        "Enable": true,
-                        "Tags": 1,
-                        "SetVlanId": 4095,
-                        "SetPbits": -1,
-                        "SetDscp": -1,
-                        "SetEthertype": 0,
-                        "DscpToPbits": -1,
-                        "PushTag": false,
-                        "PopTag": false,
-                        "Direction": true,
-                        "FilterVlanId": 4095,
-                        "FilterSkbPriority": -1,
-                        "FilterSkbMarkFlowid": -1,
-                        "FilterEthertype": 0,
-                        "FilterVlanDevMacAddr": -1
-                    }
-                }
-            }
+        "ETH2": {
+          "Name": "ETH2",
+          "Enable": true,
+          "Status": true,
+          "Flags": "enabled netdev vlan",
+          "LLAddress": "88:D2:74:AB:05:D0",
+          "TxQueueLen": 0,
+          "MTU": 1500,
+          "NetDevState": "up",
+          "CurrentBitRate": 1000,
+          "LastChangeTime": 75
         },
-        "bridge": {},
-        "copy": {
-            "ETH0": {},
-            "eth1": {}
-        },
-        "dhcp-api": {
-            "ETH0": {},
-            "eth1": {}
-        },
-        "dhcp": {},
-        "dhcpv6": {},
-        "dop-slave": {},
-        "dsl": {},
-        "dslbonding": {},
-        "dslite": {},
-        "dslline": {},
-        "eth": {
-            "eth1": {
-                "LastChangeTime": 241702,
-                "LastChange": 121503,
-                "CurrentBitRate": 100,
-                "MaxBitRateSupported": 1000,
-                "MaxBitRateEnabled": -1,
-                "CurrentDuplexMode": "Full",
-                "DuplexModeEnabled": "Auto",
-                "PowerSavingSupported": true,
-                "PowerSavingEnabled": false,
-                "PowerSavingStatus": "Inactive"
-            }
-        },
-        "gre": {},
-        "ipsec": {},
-        "nat": {
-            "ETH0": {
-                "NATEnabled": false
-            },
-            "eth1": {
-                "NATEnabled": false
-            }
-        },
-        "netdev-api": {
-            "ETH0": {},
-            "eth1": {}
-        },
-        "netdev": {
-            "ETH0": {
-                "NetDevIndex": 19,
-                "NetDevType": "ether",
-                "NetDevFlags": "up broadcast multicast",
-                "NetDevName": "ETH0",
-                "LLAddress": "88:D2:74:AB:05:D0",
-                "TxQueueLen": 0,
-                "MTU": 1500,
-                "NetDevState": "up",
-                "IPv4Forwarding": true,
-                "IPv4ForceIGMPVersion": 0,
-                "IPv4AcceptSourceRoute": true,
-                "IPv4AcceptLocal": false,
-                "IPv4AcceptRedirects": false,
-                "IPv4ArpFilter": false,
-                "IPv6AcceptRA": true,
-                "IPv6ActAsRouter": true,
-                "IPv6AutoConf": true,
-                "IPv6MaxRtrSolicitations": 3,
-                "IPv6RtrSolicitationInterval": 4000,
-                "IPv6AcceptSourceRoute": false,
-                "IPv6AcceptRedirects": true,
-                "IPv6OptimisticDAD": false,
-                "IPv6AcceptDAD": 2,
-                "IPv6Disable": true,
-                "IPv6HostPart": "",
-                "RtTable": 0,
-                "RtPriority": 0,
-                "IPv6AddrDelegate": "",
-                "IPv4Addr": {},
-                "IPv6Addr": {},
-                "IPv4Route": {},
-                "IPv6Route": {}
-            },
-            "eth1": {
-                "NetDevIndex": 10,
-                "NetDevType": "ether",
-                "NetDevFlags": "up broadcast multicast nomultipath",
-                "NetDevName": "eth1",
-                "LLAddress": "88:D2:74:AB:05:D0",
-                "TxQueueLen": 1000,
-                "MTU": 1500,
-                "NetDevState": "up",
-                "IPv4Forwarding": true,
-                "IPv4ForceIGMPVersion": 0,
-                "IPv4AcceptSourceRoute": true,
-                "IPv4AcceptLocal": false,
-                "IPv4AcceptRedirects": false,
-                "IPv4ArpFilter": false,
-                "IPv6AcceptRA": true,
-                "IPv6ActAsRouter": true,
-                "IPv6AutoConf": true,
-                "IPv6MaxRtrSolicitations": 3,
-                "IPv6RtrSolicitationInterval": 4000,
-                "IPv6AcceptSourceRoute": false,
-                "IPv6AcceptRedirects": true,
-                "IPv6OptimisticDAD": false,
-                "IPv6AcceptDAD": 2,
-                "IPv6Disable": true,
-                "IPv6HostPart": "",
-                "RtTable": 0,
-                "RtPriority": 0,
-                "IPv6AddrDelegate": "",
-                "IPv4Addr": {},
-                "IPv6Addr": {},
-                "IPv4Route": {},
-                "IPv6Route": {}
-            }
-        },
-        "penable": {},
-        "ppp": {},
-        "ptm": {},
-        "ra-api": {
-            "ETH0": {},
-            "eth1": {}
-        },
-        "ra": {},
-        "sfp": {},
-        "statmon": {
-            "eth1": {
-                "StatMon": {
-                    "netdev-live": {
-                        "Enable": false,
-                        "Interval": 15000,
-                        "Type": "netdev"
-                    },
-                    "netdev-historical": {
-                        "Enable": false,
-                        "Interval": 60000,
-                        "Type": "netdev"
-                    }
-                }
-            }
-        },
-        "switch": {},
-        "tethering": {},
-        "vlan": {
-            "ETH0": {
-                "LastChangeTime": 241702,
-                "LastChange": 121503,
-                "VLANID": 4095,
-                "VLANPriority": -1
-            }
-        },
-        "vpnclient": {},
-        "vpnserver": {},
-        "wan": {},
-        "wlanbcmep": {},
-        "wlanbcmrad": {},
-        "wlanbcmvap": {},
-        "wlanconfig": {},
-        "wlanendpoint": {},
-        "wlanmtkrad": {},
-        "wlanquanrad": {},
-        "wlanquanvap": {},
-        "wlanradio": {},
-        "wlanvap": {},
-        "wwan": {},
-        "wwan_xt": {}
+        "ETH3": {
+          "Name": "ETH3",
+          "Enable": true,
+          "Status": true,
+          "Flags": "up broadcast multicast",
+          "LLAddress": "88:D2:74:AB:05:D1",
+          "TxQueueLen": 1000,
+          "MTU": 1500,
+          "NetDevState": "up",
+          "CurrentBitRate": 1000,
+          "LastChangeTime": 73
+        }
+      },
+      "alias": {
+        "ETH0": { "Alias": "cpe-ETH0" },
+        "ETH1": { "Alias": "cpe-ETH1" },
+        "ETH2": { "Alias": "cpe-ETH2" },
+        "ETH3": { "Alias": "cpe-eth3" }
+      }
     }
+  }
 }

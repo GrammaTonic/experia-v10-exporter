@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -58,7 +59,7 @@ func TestCollect_ParsesMIBsAndEmitsNetdevMetrics(t *testing.T) {
 	// Find netdev_up metric family and assert eth2 and eth3 are present and up
 	found := map[string]float64{}
 	for _, mf := range mfs {
-		if mf.GetName() == metricPrefix+"netdev_up" {
+		if mf.GetName() == metrics.MetricPrefix+"netdev_up" {
 			for _, m := range mf.GetMetric() {
 				for _, lp := range m.GetLabel() {
 					if lp.GetName() == "ifname" {
@@ -86,7 +87,7 @@ func TestCollect_ParsesMIBsAndEmitsNetdevMetrics(t *testing.T) {
 	// Search mfs for netdev_mtu
 	mtuFound := map[string]float64{}
 	for _, mf := range mfs {
-		if mf.GetName() == metricPrefix+"netdev_mtu" {
+		if mf.GetName() == metrics.MetricPrefix+"netdev_mtu" {
 			for _, m := range mf.GetMetric() {
 				var ifn string
 				var val float64

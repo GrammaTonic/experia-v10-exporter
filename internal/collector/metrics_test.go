@@ -13,6 +13,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -27,10 +29,10 @@ func TestDescribeEmitsDescriptors(t *testing.T) {
 	foundIfup := false
 	foundPermission := false
 	for d := range ch {
-		if d.String() == ifupTime.String() {
+		if d.String() == metrics.IfupTime.String() {
 			foundIfup = true
 		}
-		if d == permissionErrors.Desc() {
+		if d == metrics.PermissionErrors.Desc() {
 			foundPermission = true
 		}
 	}
@@ -75,7 +77,7 @@ func TestFetchURLReadError(t *testing.T) {
 		return r, nil
 	})
 	// fetchURL should succeed with our body; assert content
-	b, err := c.fetchURL(context.Background(), "GET", "http://example/", nil, nil)
+	b, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", nil, nil)
 	if err != nil {
 		t.Fatalf("fetchURL failed: %v", err)
 	}
@@ -88,7 +90,7 @@ func TestFetchURLErrors(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
 
 	// case: empty method -> http.NewRequest should error
-	if _, err := c.fetchURL(context.Background(), "", "http://example", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error for empty method")
 	}
 
@@ -96,7 +98,7 @@ func TestFetchURLErrors(t *testing.T) {
 	c.client.Transport = testutil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, &testutil.SimpleErr{S: "network error"}
 	})
-	if _, err := c.fetchURL(context.Background(), "GET", "http://example", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error when client.Do fails")
 	}
 
@@ -108,7 +110,7 @@ func TestFetchURLErrors(t *testing.T) {
 		}
 		return r, nil
 	})
-	if _, err := c.fetchURL(context.Background(), "GET", "http://example", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example", nil, nil); err == nil {
 		t.Fatalf("expected error when reading body fails")
 	}
 }
@@ -195,7 +197,7 @@ func TestFetchURLHeaders(t *testing.T) {
 		}
 		return r, nil
 	})
-	b, err := c.fetchURL(context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "yes"}, nil)
+	b, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "yes"}, nil)
 	if err != nil {
 		t.Fatalf("fetchURL failed: %v", err)
 	}
@@ -207,7 +209,7 @@ func TestFetchURLHeaders(t *testing.T) {
 // TestFetchURLEmptyURL ensures http.NewRequest errors when URL is empty
 func TestFetchURLEmptyURL(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
-	if _, err := c.fetchURL(context.Background(), "GET", "", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "", nil, nil); err == nil {
 		t.Fatalf("expected error for empty URL")
 	}
 }
@@ -242,7 +244,7 @@ func TestAuthenticateNoCookieJar(t *testing.T) {
 // TestFetchURLInvalidURL_NonTag verifies fetchURL returns an error for an invalid URL (non-test build)
 func TestFetchURLInvalidURL_NonTag(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
-	if _, err := c.fetchURL(context.Background(), "GET", "http://\x00/", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://\x00/", nil, nil); err == nil {
 		t.Fatalf("expected fetchURL to fail for invalid URL")
 	}
 }
@@ -269,7 +271,7 @@ func TestSetCookiesFromResponseFallback(t *testing.T) {
 	resp.Header.Add("Set-Cookie", "a=b; Path=/")
 
 	// Call helper with nil reqURL and a fallback URL
-	setCookiesFromResponse(jar, resp, nil, "http://example.local/")
+	connectivity.SetCookiesFromResponse(jar, resp, nil, "http://example.local/")
 	u, _ := url.Parse("http://example.local/")
 	cookies := jar.Cookies(u)
 	if len(cookies) == 0 {
@@ -279,7 +281,7 @@ func TestSetCookiesFromResponseFallback(t *testing.T) {
 
 func TestSetCookiesFromResponseNilInputs(t *testing.T) {
 	// Verify no panic on nil jar or nil resp
-	setCookiesFromResponse(nil, nil, nil, "http://example.local/")
+	connectivity.SetCookiesFromResponse(nil, nil, nil, "http://example.local/")
 }
 
 // TestAuthenticateNewRequestError_NonTag forces http.NewRequest to fail via newRequest override

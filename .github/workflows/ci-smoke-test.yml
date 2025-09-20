@@ -1,0 +1,79 @@
+name: CI Smoke Test - Docker image and metrics
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Build image and verify /metrics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -f docker/Dockerfile -t experia-smoke:latest .
+
+      - name: Run exporter container
+        run: |
+          # Run container in background and publish metrics port
+          docker run -d --name experia-smoke -p 9100:9100 experia-smoke:latest
+
+      - name: Wait for container HEALTH status
+        env:
+          ATTEMPTS: 60
+          SLEEP_SECONDS: 2
+        run: |
+          set -eo pipefail
+          # Wait for the container health to become 'healthy'. This requires
+          # the image to declare a HEALTHCHECK (the Dockerfile adds a small
+          # probe binary and HEALTHCHECK). We poll docker inspect until the
+          # status is 'healthy' or we time out.
+          status="unknown"
+          for i in $(seq 1 "$ATTEMPTS"); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' experia-smoke 2>/dev/null || true)
+            echo "container health status: ${status}"
+            if [ "$status" = "healthy" ]; then
+              echo "container is healthy"
+              exit 0
+            fi
+            # If .State.Health is missing or empty, continue waiting so CI
+            # has time to start the container and run the HEALTHCHECK.
+            sleep ${SLEEP_SECONDS}
+          done
+          echo "Timed out waiting for container to become healthy (last status=${status})"
+          echo "Container logs:"
+          docker logs experia-smoke || true
+          # fail the job
+          exit 1
+
+      - name: Assert /metrics contains wan discovery
+        if: success()
+        env:
+          CURL_RETRIES: 5
+        run: |
+          set -eo pipefail
+          # After the container is healthy, scrape /metrics to assert the
+          # discovery metric is present. Use curl with retries to tolerate
+          # minor transient errors.
+          if curl --retry ${CURL_RETRIES} --retry-connrefused --retry-delay 1 -sS http://localhost:9100/metrics | grep -q '^experia_v10_wan_ifname'; then
+            echo "found experia_v10_wan_ifname"
+            exit 0
+          fi
+          echo "experia_v10_wan_ifname not found after container reported healthy"
+          echo "Container logs:"
+          docker logs experia-smoke || true
+          # fail the job
+          exit 1
+
+      - name: Stop and remove container (success)
+        if: success()
+        run: docker rm -f experia-smoke || true
+
+      - name: Stop and remove container (always)
+        if: failure()
+        run: docker rm -f experia-smoke || true

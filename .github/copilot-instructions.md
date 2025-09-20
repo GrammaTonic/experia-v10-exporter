@@ -2,6 +2,9 @@
 
 Concise guidance for AI agents editing this repository. Focus on discoverable, repo-specific patterns, build/test workflows, and integration points.
 
+# Ensure for each run modulescruture.md is applied to all relevant files.
+- check .github/instructions/modulestucture.md is applied to all internal/**/*.go and cmd/**/*.go files
+
 ## Quick facts
 - Language: Go (go.mod: go 1.25.1)
 # GitHub Copilot Instructions for experia-v10-exporter
@@ -23,8 +26,6 @@ This file gives concise, up-to-date guidance for AI assistants and contributors 
 
 ## Repo layout (quick)
 - `cmd/experia-v10-exporter/` — main program
-- `internal/collector/` — collector implementation
-- `internal/testutil/` — shared test helpers (use this)
 - `docker/` — Dockerfile(s) and docker-compose
 - `.github/` — CI and automation (workflows, dependabot, copilot instructions)
 

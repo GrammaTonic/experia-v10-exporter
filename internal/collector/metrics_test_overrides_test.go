@@ -7,6 +7,8 @@ import (
 	"context"
 	"net"
 	"testing"
+
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
 )
 
 // TestAuthenticateNewRequestError forces an invalid apiUrl to trigger http.NewRequest error in authenticate
@@ -24,7 +26,7 @@ func TestAuthenticateNewRequestError(t *testing.T) {
 // TestFetchURLInvalidURL forces fetchURL to fail on NewRequest by passing an invalid URL
 func TestFetchURLInvalidURL(t *testing.T) {
 	c := NewCollector(nil, "", "", 1)
-	if _, err := c.fetchURL(context.Background(), "GET", "http://\x00/", nil, nil); err == nil {
+	if _, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://\x00/", nil, nil); err == nil {
 		t.Fatalf("expected fetchURL to fail for invalid URL")
 	}
 }

@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 )
 
@@ -54,7 +55,7 @@ var _ = Describe("collector extra cases", func() {
 		c := NewCollector(net.ParseIP("192.0.2.21"), "u", "p", 1*time.Second)
 		c.client.Transport = testutil.RewriteTransport(ts.URL)
 
-		b, err := c.fetchURL(context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "1"}, nil)
+		b, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "1"}, nil)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(string(b)).To(Equal("ok"))
 	})
