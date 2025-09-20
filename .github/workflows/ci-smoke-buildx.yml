@@ -49,7 +49,7 @@ jobs:
           # Always tag the local image; also tag the GHCR image (push only on main)
           tags: |
             experia-buildx:latest
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/grammantonic/experia-v10-exporter:latest
           load: ${{ github.ref != 'refs/heads/main' }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
