@@ -8,10 +8,11 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"sync"
+
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
 
 	"strconv"
 	"strings"
@@ -64,16 +65,11 @@ type Experiav10Collector struct {
 }
 
 func NewCollector(ip net.IP, username, password string, timeout time.Duration, candidates ...string) *Experiav10Collector {
-	cookieJar, _ := cookiejar.New(nil)
-
 	c := &Experiav10Collector{
 		ip:       ip,
 		username: username,
 		password: password,
-		client: &http.Client{
-			Timeout: timeout,
-			Jar:     cookieJar,
-		},
+		client:   connectivity.NewHTTPClient(timeout),
 		upMetric: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: metricPrefix + "up",
 			Help: "Shows if the Experia Box V10 is deemed up by the collector.",

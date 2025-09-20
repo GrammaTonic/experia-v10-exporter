@@ -27,6 +27,7 @@ Thumbs.db
 
 # Go workspace
 pkg/
+.env
 
 # Misc
 *.orig

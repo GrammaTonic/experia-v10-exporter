@@ -6,42 +6,37 @@ applyTo: "**"
 # Go Module Structure Instructions
 ## Overview
 This document provides guidelines for organizing Go code into modules to enhance maintainability, scalability, and clarity. Proper module structure helps in managing dependencies, versioning, and collaboration among developers.
-## Layout
-- **Root Directory**: The root of your project should contain the `go.mod` file
-    - This file defines the module path and its dependencies.
-- **cmd/**: This directory contains the main applications for your project.
-    - Each application should have its own subdirectory (e.g., `cmd/app1`, `cmd/app2`).
-    - Each subdirectory should contain a `main.go` file.
-- **internal/**: This directory contains packages that are only intended for use within your project.
-    - Similar to `pkg/`, organize related functionality into subdirectories (e.g., `internal/collector`, `internal/utils`).
 
 ## internal layout
-- **internal/collector**: Contains the main logic for collecting data from the Experia V10 device.
-    - `collector.go`: Main collector implementation.
-- **internal/collector/services**: Contains service-specific modules for handling different API calls.
-    - `nmc/`: Module for NMC service-related functionality.
-        - `getwanstatus.go`: Handles the `getWANStatus` API call.
-    - `nemo/`: Module for NeMo service-related functionality.
-        - `getmibs.go`: Handles the `getMIBs` API call.
-        - `getnetdevstats.go`: Handles the `getNetDevStats` API call.
-- **internal/collector/metrics**: Contains metric definitions and helpers.
-    -  `nmc/`: Module for NMC service-related functionality.
-        - `metrics_getwanstatus.go`: Defines metrics related to WAN status.
-    - `nemo/`: Module for NeMo service-related functionality.
-        - `metrics_getmibs.go`: Defines metrics related to MIBs.
-        - `metrics_getnetdevstats.go`: Defines metrics related to network device statistics.
-    - `helpers.go`: Common metric helper functions.
-- **internal/collector/parser**: Contains parsers for API responses.
-    - `nemo/`: Module for NeMo service-related functionality.
-        - `parse_mibs.go`: Parses the response from `getMIBs`.
-        - `parse_netdevstats.go`: Parses the response from `getNetDevStats`.
-    - `nmc/`: Module for NMC service-related functionality.
-        - `parse_wanstatus.go`: Parses the response from `getWANStatus`.
-- **internal/collector/models**: Contains data models and types used across the collector.
-    - `models.go`: Structs and types for API responses and internal data representation.
-- **internal/collector/connectivity**: Contains code related to HTTP client and authentication.
-    - `client.go`: HTTP client setup and request functions.
-    - `auth.go`: Authentication logic for the Experia V10 device.
-    - `fetch.go`: Functions for fetching data from the device.
+
+The `internal/` tree contains packages that are implementation details of this repository. Keep packages small and focused. The layout below reflects how the collector code is split by responsibility. For each directory we add a one-line example of what's included to help contributors find the right place for new code.
+
+- **internal/collector** — core collector logic for talking to the Experia V10 and exposing Prometheus metrics.
+    - Example: `collector.go` implements the Prometheus Collector interface and coordinates API calls.
+
+- **internal/collector/services** — service-specific API clients and callers.
+    - `nmc/` — NMC service helpers
+        - Example: `getwanstatus.go` implements the `getWANStatus` call and returns a parsed model.
+    - `nemo/` — NeMo service helpers
+        - Example: `getmibs.go` (calls `getMIBs`) and `getnetdevstats.go` (calls `getNetDevStats`).
+
+- **internal/collector/metrics** — Prometheus metric definitions and helpers.
+    - `nmc/` — metrics related to NMC responses
+        - Example: `metrics_getwanstatus.go` registers and updates WAN-related metrics.
+    - `nemo/` — metrics related to NeMo responses
+        - Example: `metrics_getmibs.go`, `metrics_getnetdevstats.go`.
+    - `helpers.go` — shared helpers for metric creation and label handling.
+
+- **internal/collector/parser** — response parsers that convert raw API payloads into typed models.
+    - `nemo/`
+        - Example: `parse_mibs.go` and `parse_netdevstats.go` transform HTTP responses into Go structs.
+    - `nmc/`
+        - Example: `parse_wanstatus.go` parses the `getWANStatus` response.
+
+- **internal/collector/models** — shared data models used across services, parsers, and metrics.
+    - Example: `models.go` contains structs that represent API responses and normalized internal types.
+
+- **internal/collector/connectivity** — HTTP client, authentication and fetch helpers.
+    - Example: `client.go` configures the HTTP client, `auth.go` holds login/session logic, and `fetch.go` exposes helpers to perform authenticated requests.
 
 

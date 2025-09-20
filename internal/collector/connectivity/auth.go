@@ -50,6 +50,7 @@ func (c *Experiav10Collector) authenticate() (sessionContext, error) {
 	if os.Getenv("EXPERIA_E2E") == "1" {
 		log.Printf("AUTH RESP status=%s headers=%v cookies=%v", resp.Status, resp.Header, resp.Cookies())
 	}
+	// store cookies using helper in connectivity package
 	setCookiesFromResponse(c.client.Jar, resp, req.URL, apiURL)
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

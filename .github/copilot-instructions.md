@@ -26,8 +26,6 @@ This file gives concise, up-to-date guidance for AI assistants and contributors 
 
 ## Repo layout (quick)
 - `cmd/experia-v10-exporter/` — main program
-- `internal/collector/` — collector implementation
-- `internal/testutil/` — shared test helpers (use this)
 - `docker/` — Dockerfile(s) and docker-compose
 - `.github/` — CI and automation (workflows, dependabot, copilot instructions)
 
