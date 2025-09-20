@@ -270,7 +270,7 @@ func TestSetCookiesFromResponseFallback(t *testing.T) {
 	resp.Header.Add("Set-Cookie", "a=b; Path=/")
 
 	// Call helper with nil reqURL and a fallback URL
-	setCookiesFromResponse(jar, resp, nil, "http://example.local/")
+	connectivity.SetCookiesFromResponse(jar, resp, nil, "http://example.local/")
 	u, _ := url.Parse("http://example.local/")
 	cookies := jar.Cookies(u)
 	if len(cookies) == 0 {
@@ -280,7 +280,7 @@ func TestSetCookiesFromResponseFallback(t *testing.T) {
 
 func TestSetCookiesFromResponseNilInputs(t *testing.T) {
 	// Verify no panic on nil jar or nil resp
-	setCookiesFromResponse(nil, nil, nil, "http://example.local/")
+	connectivity.SetCookiesFromResponse(nil, nil, nil, "http://example.local/")
 }
 
 // TestAuthenticateNewRequestError_NonTag forces http.NewRequest to fail via newRequest override
