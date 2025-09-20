@@ -41,7 +41,4 @@ release:
     draft: false
     prerelease: false
 
-archive:
-  format_overrides:
-    - goos: windows
-      formats: [zip]
+
