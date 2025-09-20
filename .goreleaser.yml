@@ -3,11 +3,6 @@ version: 2
 project_name: experia-v10-exporter
 
 builds:
-version: 2
-
-project_name: experia-v10-exporter
-
-builds:
   - id: experia-v10-exporter
     main: ./cmd/experia-v10-exporter
     binary: experia-v10-exporter
@@ -41,7 +36,3 @@ release:
   github:
     owner: GrammaTonic
     name: experia-v10-exporter
-      - image_templates:
-
-          - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
-
