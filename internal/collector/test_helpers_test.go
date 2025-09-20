@@ -1,6 +1,4 @@
 package collector
 
-// test helpers shared by collector tests
-type simpleErr struct{ s string }
-
-func (e *simpleErr) Error() string { return e.s }
+// Deprecated placeholder: simpleErr moved to testhelpers_test.go
+// This file intentionally left blank to avoid duplicate symbol errors.
