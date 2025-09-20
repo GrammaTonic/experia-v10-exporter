@@ -104,8 +104,10 @@ func TestMainListenAddrEmpty(t *testing.T) {
 	defer func() { listenAndServe = origListen }()
 
 	main()
-	if gotAddr != "" {
-		t.Fatalf("expected listen addr to be empty, got %q", gotAddr)
+	// New behavior: an empty env var falls back to default ":9100" so the
+	// exporter can run in CI/smoke environments without additional config.
+	if gotAddr != ":9100" {
+		t.Fatalf("expected listen addr to be :9100, got %q", gotAddr)
 	}
 
 	// cleanup: unregister collector created by Setup

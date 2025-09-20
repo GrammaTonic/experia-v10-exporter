@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -73,7 +74,7 @@ func TestCollect_ParsesGetNetDevStats(t *testing.T) {
 	extract := func(name string) map[string]float64 {
 		out := map[string]float64{}
 		for _, mf := range mfs {
-			if mf.GetName() != metricPrefix+name {
+			if mf.GetName() != metrics.MetricPrefix+name {
 				continue
 			}
 			for _, m := range mf.GetMetric() {

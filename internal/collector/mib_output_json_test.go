@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -61,7 +62,7 @@ func TestCollect_UsesOutputJSON_DiscoverAndExportETH0Eth1(t *testing.T) {
 	gatherByName := func(family string) map[string]float64 {
 		out := map[string]float64{}
 		for _, mf := range mfs {
-			if mf.GetName() == metricPrefix+family {
+			if mf.GetName() == metrics.MetricPrefix+family {
 				for _, m := range mf.GetMetric() {
 					var ifn string
 					var val float64

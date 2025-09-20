@@ -20,6 +20,10 @@ RUN go mod download
 # Build the Go app with CGO disabled and target the main package under cmd/.
 # Set GOOS=linux to ensure a Linux binary for the scratch image.
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /experia-v10-exporter ./cmd/experia-v10-exporter
+# Build a tiny static probe binary we can use in the final scratch image for
+# HEALTHCHECK. Keeping this as a Go program means it's statically linked with
+# CGO disabled and small.
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /probe ./cmd/probe
 
 # Create a "nobody" non-root user for the next image by crafting an /etc/passwd
 # file that the next image can copy in. This is necessary since the next image
@@ -31,6 +35,9 @@ FROM scratch
 
 # Copy the binary from the builder stage
 COPY --from=builder /experia-v10-exporter /experia-v10-exporter
+# Copy probe so the scratch image can run a health check without depending on
+# /bin/sh or curl being present.
+COPY --from=builder /probe /probe
 
 # Copy the certs from the builder stage
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -43,3 +50,8 @@ COPY --from=builder /etc/passwd /etc/passwd
 USER nobody
 
 ENTRYPOINT [ "/experia-v10-exporter" ]
+
+# Healthcheck: ensure /metrics is reachable. Use a short timeout so Docker can mark
+# the container unhealthy if the app fails to respond quickly. This helps orchestrators
+# detect failed containers during startup/restart loops.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 CMD ["/probe","-url","http://127.0.0.1:9100/metrics","-timeout","2s"]

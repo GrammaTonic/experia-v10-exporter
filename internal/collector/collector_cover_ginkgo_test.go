@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 )
 
@@ -40,11 +41,11 @@ var _ = Describe("collector cover additional", func() {
 		c := NewCollector(net.ParseIP("192.0.2.31"), "u", "p", 1*time.Second)
 		c.client.Transport = testutil.RewriteTransport(ts.URL)
 
-		b, err := c.fetchURL(context.Background(), "GET", "http://example/", nil, nil)
+		b, err := connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", nil, nil)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(string(b)).To(Equal("base"))
 
-		b, err = c.fetchURL(context.Background(), "GET", "http://example/", map[string]string{"X-Variant": "1"}, nil)
+		b, err = connectivity.FetchURL(c.client, context.Background(), "GET", "http://example/", map[string]string{"X-Variant": "1"}, nil)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(string(b)).To(Equal("v1"))
 	})

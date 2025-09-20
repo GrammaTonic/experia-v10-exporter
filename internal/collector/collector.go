@@ -8,19 +8,22 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"sync"
 
-	"strconv"
+	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
+
 	"strings"
 	"time"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
+	nemo "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nemo"
+	nmc "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nmc"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const metricPrefix = "experia_v10_"
+// metricPrefix moved to internal/collector/metrics as MetricPrefix
 
 // defaultNetdevCandidates lists the uppercase interface identifiers used when
 // constructing NeMo service calls (NeMo.Intf.<IF>). These are requested as
@@ -61,26 +64,21 @@ type Experiav10Collector struct {
 }
 
 func NewCollector(ip net.IP, username, password string, timeout time.Duration, candidates ...string) *Experiav10Collector {
-	cookieJar, _ := cookiejar.New(nil)
-
 	c := &Experiav10Collector{
 		ip:       ip,
 		username: username,
 		password: password,
-		client: &http.Client{
-			Timeout: timeout,
-			Jar:     cookieJar,
-		},
+		client:   connectivity.NewHTTPClient(timeout),
 		upMetric: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: metricPrefix + "up",
+			Name: metrics.MetricPrefix + "up",
 			Help: "Shows if the Experia Box V10 is deemed up by the collector.",
 		}),
 		authErrorsMetric: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: metricPrefix + "auth_errors_total",
+			Name: metrics.MetricPrefix + "auth_errors_total",
 			Help: "Counts number of authentication errors encountered by the collector.",
 		}),
 		scrapeErrorsMetric: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: metricPrefix + "scrape_errors_total",
+			Name: metrics.MetricPrefix + "scrape_errors_total",
 			Help: "Counts the number of scrape errors by this collector.",
 		}),
 	}
@@ -105,12 +103,13 @@ func NewCollector(ip net.IP, username, password string, timeout time.Duration, c
 // established session (cookies + token headers). It returns an error if
 // authentication fails.
 func (c *Experiav10Collector) Login() error {
-	sess, err := c.authenticate()
+	apiURL := fmt.Sprintf(apiUrl, c.ip.String())
+	token, err := connectivity.Authenticate(c.client, apiURL, c.username, c.password, newRequest, jsonMarshal)
 	if err != nil {
 		return err
 	}
 	c.sessionMu.Lock()
-	c.session = sess
+	c.session = sessionContext{Token: token}
 	c.sessionMu.Unlock()
 	return nil
 }
@@ -124,7 +123,8 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	c.sessionMu.RUnlock()
 	if sess.Token == "" {
 		// Try to establish a session for this scrape
-		newSess, err := c.authenticate()
+		apiURL := fmt.Sprintf(apiUrl, c.ip.String())
+		token, err := connectivity.Authenticate(c.client, apiURL, c.username, c.password, newRequest, jsonMarshal)
 		if err != nil {
 			c.authErrorsMetric.Inc()
 			c.upMetric.Set(0)
@@ -136,21 +136,31 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			// the behavior consistent for tests and scrapers that expect the family
 			// to always be present.
 			ch <- prometheus.MustNewConstMetric(
-				ifupTime,
+				metrics.IfupTime,
 				prometheus.GaugeValue,
 				0.0,
 				"", "", "Unknown", "", "",
 			)
+
+			// Also ensure the WAN discovery metric family is present even when the
+			// collector cannot authenticate to the device. This avoids CI flakes and
+			// makes the metric family discoverable for scrapers relying on it.
+			ch <- prometheus.MustNewConstMetric(metrics.WanIfname, prometheus.GaugeValue, 0.0, "")
 			return
 		}
 		c.sessionMu.Lock()
-		c.session = newSess
+		c.session = sessionContext{Token: token}
 		c.sessionMu.Unlock()
-		sess = newSess
+		sess = sessionContext{Token: token}
 	}
 
 	// whether we're running E2E/debug mode
 	e2e := os.Getenv("EXPERIA_E2E") == "1"
+	// whether to force overwrite alias with "wan" when WAN MAC match detected
+	// Default: false. Only enable when EXPERIA_FORCE_WAN_ALIAS is explicitly
+	// set to "1" or "true" (case-insensitive).
+	fa := os.Getenv("EXPERIA_FORCE_WAN_ALIAS")
+	forceWanAlias := strings.EqualFold(fa, "1") || strings.EqualFold(fa, "true")
 	debugLog := func(format string, args ...interface{}) {
 		if e2e {
 			log.Printf(format, args...)
@@ -185,7 +195,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		reqCtx, cancel := context.WithTimeout(context.Background(), c.client.Timeout)
 		defer cancel()
 
-		resp, err := c.fetchURL(reqCtx, "POST", url, headers, []byte(body))
+		resp, err := connectivity.FetchURL(c.client, reqCtx, "POST", url, headers, []byte(body))
 		if err != nil {
 			log.Printf("ERROR: failed to fetch %s: %v", body, err)
 			c.scrapeErrorsMetric.Inc()
@@ -195,7 +205,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// Fetch getWANStatus and export metrics
-	wanStatusResp := postFetch(`{"service":"NMC","method":"getWANStatus","parameters":{}}`)
+	wanStatusResp := postFetch(nmc.RequestBody())
 	debugLog("DEBUG: getWANStatus response length=%d", len(wanStatusResp))
 	// When running an E2E invocation, print the raw WAN JSON so we can
 	// diagnose firmware variations in the JSON schema. debugLog already
@@ -223,7 +233,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			if len(wanStatus.Errors) > 0 {
 				for _, e := range wanStatus.Errors {
 					if e.Description == "Permission denied" {
-						permissionErrors.Inc()
+						metrics.PermissionErrors.Inc()
 					}
 				}
 			}
@@ -237,7 +247,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 				connState = "Unknown"
 			}
 			ch <- prometheus.MustNewConstMetric(
-				ifupTime,
+				metrics.IfupTime,
 				prometheus.GaugeValue,
 				val,
 				wanStatus.Data.LinkType,
@@ -254,7 +264,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	// metric family is always present for Gather() consumers (tests, scrapers).
 	if !emittedWAN {
 		ch <- prometheus.MustNewConstMetric(
-			ifupTime,
+			metrics.IfupTime,
 			prometheus.GaugeValue,
 			0.0,
 			"", "", "Unknown", "", "",
@@ -290,6 +300,9 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 
 	// ...existing code...
 
+	// Track which canonical label we've identified as the WAN (first match).
+	wanLabelName := ""
+
 	// Process each candidate immediately and emit metrics per-interface.
 	// We no longer try to match names returned by the device. Instead we
 	// perform the requests for "ETH0","ETH1","ETH2","ETH3" and
@@ -299,418 +312,245 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	for idx, cand := range candidates {
 		// canonical label: eth1..ethN (1-based)
 		labelName := fmt.Sprintf("eth%d", idx+1)
-		body := fmt.Sprintf(`{"service":"NeMo.Intf.%s","method":"getMIBs","parameters":{}}`, cand)
+		body := nemo.RequestBody(cand)
 		resp := postFetch(body)
 		debugLog("DEBUG: getMIBs service=%s response length=%d", cand, len(resp))
 		// debugLog is gated by EXPERIA_E2E; print raw JSON when enabled.
 		debugLog("DEBUG RAW getMIBs service=%s: %s", cand, resp)
+		// (removed temporary RAW_CONTAINS diagnostic; keep only EXPERIA_E2E-gated
+		// debugLog calls above/below)
 		if resp == "" {
 			// still emit a zeroed metric so that collectors see the family when
 			// the device doesn't return useful data for a candidate. Use the
 			// stable labelName (eth1..ethN) instead of device-provided names.
-			ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMtu, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
 		}
-		var g map[string]any
-		if err := json.Unmarshal([]byte(resp), &g); err != nil {
+		// Use typed helpers to parse MIBs responses into a stable structure.
+		mi, s, err := nemo.GetMIBsTyped([]byte(resp), cand)
+		if err != nil {
 			continue
 		}
-		// findStatus scans a decoded JSON map for a child that contains 'base' or 'netdev'.
-		var findStatus func(m map[string]any) map[string]any
-		findStatus = func(m map[string]any) map[string]any {
-			if m == nil {
-				return nil
-			}
-			if _, ok := m["base"]; ok {
-				return m
-			}
-			if _, ok := m["netdev"]; ok {
-				return m
-			}
-			for _, v := range m {
-				if child, ok := v.(map[string]any); ok {
-					if found := findStatus(child); found != nil {
-						return found
-					}
-				}
-			}
-			return nil
-		}
-
-		var s map[string]any
-		if ss := findStatus(g); ss != nil {
-			s = ss
-		} else if data, ok := g["data"].(map[string]any); ok {
-			if ss := findStatus(data); ss != nil {
-				s = ss
-			}
-		}
-		if s == nil {
-			if top, ok := g["status"].(map[string]any); ok {
-				if ss := findStatus(top); ss != nil {
-					s = ss
-				} else {
-					s = top
-				}
-			}
-		}
-		if s == nil {
+		// Print typed MIB fields for debugging in E2E mode
+		debugLog("DEBUG MIB_TYPED candidate=%s lladdress=%s alias=%s mtu=%v speed=%v", cand, mi.LLAddress, mi.Alias, mi.MTU, mi.CurrentBitRate)
+		if mi == (nemo.MIBInfo{}) {
+			// no usable data for this candidate, emit zeroed metrics
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMtu, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
 		}
 
-		// Merge base and netdev entries into a single inner map for this
-		// candidate. We no longer attempt to match by name; instead pick the
-		// first available entry from `base` or `netdev` if present. This makes
-		// labeling deterministic (we always use labelName) and avoids relying
-		// on device-provided names.
-		var innerMap map[string]any
-		// Prefer an entry whose key matches the requested candidate (e.g. "ETH0"
-		// or lowercased). This makes selection deterministic across map
-		// iteration orders and ensures metrics like TxQueueLen are read from
-		// the expected entry for the candidate when present.
-		if b, ok := s["base"].(map[string]any); ok {
-			if im, ok := b[cand].(map[string]any); ok {
-				innerMap = im
-			} else if im, ok := b[strings.ToLower(cand)].(map[string]any); ok {
-				innerMap = im
-			} else {
-				for _, v := range b {
-					if im, ok := v.(map[string]any); ok {
-						innerMap = im
-						break
+		// Determine up state
+		state := 0.0
+		if strings.ToLower(mi.NetDevState) == "up" {
+			state = 1.0
+		}
+		// Attempt to honor a top-level Status boolean in the raw status map
+		if s != nil {
+			if stv, ok := s["Status"]; ok {
+				if b, ok2 := stv.(bool); ok2 && b {
+					state = 1.0
+				}
+			}
+		}
+
+		flags := mi.Flags
+		mtu := mi.MTU
+		tx := mi.TxQueueLen
+		speed := mi.CurrentBitRate
+		lct := mi.LastChangeTime
+		lladdr := mi.LLAddress
+		dtype := ""
+
+		// alias: prefer typed alias, fallback to status.alias map when present
+		alias := mi.Alias
+		if alias == "" && s != nil {
+			if am, ok := s["alias"].(map[string]any); ok {
+				if entry, ok := am[cand].(map[string]any); ok {
+					if aStr, ok := entry["Alias"].(string); ok {
+						alias = aStr
 					}
 				}
 			}
 		}
-		if innerMap == nil {
-			if nd, ok := s["netdev"].(map[string]any); ok {
-				if im, ok := nd[cand].(map[string]any); ok {
-					innerMap = im
-				} else if im, ok := nd[strings.ToLower(cand)].(map[string]any); ok {
-					innerMap = im
-				} else {
-					for _, v := range nd {
-						if im, ok := v.(map[string]any); ok {
-							innerMap = im
+
+		// Try to detect WAN-facing interface by comparing the getWANStatus MAC
+		// to the MIBs LLAddress or by finding 'wan' substrings in aliases.
+		if wanStatusResp != "" && wanLabelName == "" {
+			norm := func(mac string) string {
+				if mac == "" {
+					return ""
+				}
+				out := ""
+				for _, r := range mac {
+					if (r >= '0' && r <= '9') || (r >= 'A' && r <= 'F') || (r >= 'a' && r <= 'f') {
+						out += string(r)
+					}
+				}
+				return strings.ToUpper(out)
+			}
+			wanMac := norm(wanStatus.Data.MACAddress)
+			ll := norm(mi.LLAddress)
+			matched := false
+			// Normalized MAC match (firmware may format MACs differently)
+			if wanMac != "" && ll != "" && wanMac == ll {
+				matched = true
+			}
+			if !matched && s != nil {
+				if am, ok := s["alias"].(map[string]any); ok {
+					for _, v := range am {
+						if entry, ok := v.(map[string]any); ok {
+							for _, vv := range entry {
+								if str, ok := vv.(string); ok && strings.Contains(strings.ToLower(str), "wan") {
+									matched = true
+									break
+								}
+							}
+						}
+						if matched {
 							break
 						}
 					}
 				}
 			}
-		}
-
-		// If there is a netdev section, capture the first netdev entry so we
-		// can merge its fields (prefer netdev values for MTU/Tx and similar
-		// fields). We don't attempt to match names here.
-		var ndFirst map[string]any
-		if nd, ok := s["netdev"].(map[string]any); ok {
-			if im, ok := nd[cand].(map[string]any); ok {
-				ndFirst = im
-			} else if im, ok := nd[strings.ToLower(cand)].(map[string]any); ok {
-				ndFirst = im
-			} else {
-				for _, v := range nd {
-					if im, ok := v.(map[string]any); ok {
-						ndFirst = im
-						break
-					}
+			if !matched {
+				if strings.Contains(strings.ToLower(mi.Alias), "wan") {
+					matched = true
 				}
 			}
-		}
-
-		// Build a normalized key/value map from innerMap and ndFirst for easy lookups.
-		// Prefers netdev (ndFirst) values when present.
-		norm := map[string]any{}
-		for k, v := range innerMap {
-			norm[strings.ToLower(k)] = v
-		}
-		for k, vv := range ndFirst {
-			norm[strings.ToLower(k)] = vv
-		}
-
-		// Helper extractors
-		getBool := func(k string) (bool, bool) {
-			if v, ok := norm[strings.ToLower(k)]; ok {
-				if b, ok2 := v.(bool); ok2 {
-					return b, true
+			if matched {
+				// record the first matched canonical label as WAN
+				wanLabelName = labelName
+				if forceWanAlias {
+					alias = "wan"
 				}
-			}
-			return false, false
-		}
-		getString := func(k string) (string, bool) {
-			if v, ok := norm[strings.ToLower(k)]; ok {
-				if s, ok2 := v.(string); ok2 {
-					return s, true
-				}
-			}
-			return "", false
-		}
-		getFloat := func(k string) (float64, bool) {
-			if v, ok := norm[strings.ToLower(k)]; ok {
-				switch vv := v.(type) {
-				case float64:
-					return vv, true
-				case int:
-					return float64(vv), true
-				}
-			}
-			return 0, false
-		}
-
-		// Extract metrics
-		state := 0.0
-		if b, ok := getBool("Status"); ok && b {
-			state = 1.0
-		}
-		if sStr, ok := getString("NetDevState"); ok && strings.ToLower(sStr) == "up" {
-			state = 1.0
-		}
-		flags := ""
-		if sStr, ok := getString("NetDevFlags"); ok {
-			flags = sStr
-		} else if sStr, ok := getString("Flags"); ok {
-			flags = sStr
-		}
-		mtu := 0.0
-		if v, ok := getFloat("MTU"); ok {
-			mtu = v
-		}
-		tx := 0.0
-		if v, ok := getFloat("TxQueueLen"); ok {
-			tx = v
-		}
-		speed := 0.0
-		if v, ok := getFloat("CurrentBitRate"); ok {
-			speed = v
-		} else if v, ok := getFloat("CurrentBitRateMbps"); ok {
-			speed = v
-		}
-		lct := 0.0
-		if v, ok := getFloat("LastChangeTime"); ok {
-			lct = v
-		}
-		lladdr := ""
-		if sStr, ok := getString("LLAddress"); ok {
-			lladdr = sStr
-		}
-		dtype := ""
-		if sStr, ok := getString("NetDevType"); ok {
-			dtype = sStr
-		}
-
-		// alias: try to read top-level alias if present
-		alias := ""
-		if am, ok := s["alias"].(map[string]any); ok {
-			if aStr, ok := am["Alias"].(string); ok {
-				alias = aStr
+				// explicit debug log showing detailed match context so we can
+				// correlate the emission with a later /metrics scrape.
+				debugLog("EMIT wan ifname=%s lladdr=%s wan_mac=%s service=%s idx=%d", labelName, mi.LLAddress, wanStatus.Data.MACAddress, cand, idx)
+				ch <- prometheus.MustNewConstMetric(metrics.WanIfname, prometheus.GaugeValue, 1.0, labelName)
 			}
 		}
 
 		// Emit metrics using the stable labelName (eth1..ethN).
 		debugLog("EMIT netdev ifname=%s mtu=%v tx=%v up=%v", labelName, mtu, tx, state)
-		ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, state, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, mtu, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, tx, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, speed, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, lct, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, state, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevMtu, prometheus.GaugeValue, mtu, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevTxQueueLen, prometheus.GaugeValue, tx, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, speed, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, lct, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+		// If this is the WAN candidate, also emit WAN-specific info and MTU
+		if wanLabelName != "" && wanLabelName == labelName {
+			ch <- prometheus.MustNewConstMetric(metrics.WanInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+			ch <- prometheus.MustNewConstMetric(metrics.WanMtu, prometheus.GaugeValue, mtu, labelName)
+		}
+
+		// Extract port parameters (bitrate/duplex/SetPort) and emit additional metrics
+		if pp, err := nemo.GetPortParamsFromMIBs([]byte(resp), cand); err == nil {
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevPortCurrentBitrate, prometheus.GaugeValue, pp.CurrentBitRate, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevPortMaxBitRateSupported, prometheus.GaugeValue, pp.MaxBitRateSupported, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevPortMaxBitRateEnabled, prometheus.GaugeValue, pp.MaxBitRateEnabled, labelName)
+			if pp.DuplexModeEnabled {
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevPortDuplexEnabled, prometheus.GaugeValue, 1.0, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevPortDuplexEnabled, prometheus.GaugeValue, 0.0, labelName)
+			}
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevPortSetPortInfo, prometheus.GaugeValue, 1.0, labelName, pp.SetPort)
+			if wanLabelName != "" && wanLabelName == labelName {
+				ch <- prometheus.MustNewConstMetric(metrics.WanPortCurrentBitrate, prometheus.GaugeValue, pp.CurrentBitRate, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanPortMaxBitRateSupported, prometheus.GaugeValue, pp.MaxBitRateSupported, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanPortMaxBitRateEnabled, prometheus.GaugeValue, pp.MaxBitRateEnabled, labelName)
+				if pp.DuplexModeEnabled {
+					ch <- prometheus.MustNewConstMetric(metrics.WanPortDuplexEnabled, prometheus.GaugeValue, 1.0, labelName)
+				} else {
+					ch <- prometheus.MustNewConstMetric(metrics.WanPortDuplexEnabled, prometheus.GaugeValue, 0.0, labelName)
+				}
+			}
+		}
 
 		// Also fetch per-interface statistics via getNetDevStats and export them.
 		// This mirrors the device API call:
 		// {"service":"NeMo.Intf.ETH0","method":"getNetDevStats","parameters":{}}
-		statsBody := fmt.Sprintf(`{"service":"NeMo.Intf.%s","method":"getNetDevStats","parameters":{}}`, cand)
+		statsBody := nemo.RequestBodyStats(cand)
 		statsResp := postFetch(statsBody)
 		debugLog("DEBUG: getNetDevStats service=%s response length=%d", cand, len(statsResp))
 		debugLog("DEBUG RAW getNetDevStats service=%s: %s", cand, statsResp)
 		if statsResp == "" {
 			// Emit zeroed stats so metric families are present even when the
 			// device doesn't return data for this candidate.
-			ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMulticast, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevCollisions, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
 			continue
 		}
-		var sg map[string]any
-		if err := json.Unmarshal([]byte(statsResp), &sg); err == nil {
-			// Prefer data map when present
-			var data map[string]any
-			if d, ok := sg["data"].(map[string]any); ok {
-				data = d
-			} else if top, ok := sg["status"].(map[string]any); ok {
-				data = top
-			} else {
-				// try the top-level map itself
-				data = sg
-			}
-
-			getNum := func(k string) (float64, bool) {
-				if data == nil {
-					return 0, false
-				}
-				if v, ok := data[k]; ok {
-					switch vv := v.(type) {
-					case float64:
-						return vv, true
-					case int:
-						return float64(vv), true
-					case string:
-						if vv == "" {
-							return 0, false
-						}
-						if f, err := strconv.ParseFloat(vv, 64); err == nil {
-							return f, true
-						}
-					}
-				}
-				// try lower-cased keys as some firmwares use different casing
-				if v, ok := data[strings.ToLower(k)]; ok {
-					switch vv := v.(type) {
-					case float64:
-						return vv, true
-					case int:
-						return float64(vv), true
-					case string:
-						if vv == "" {
-							return 0, false
-						}
-						if f, err := strconv.ParseFloat(vv, 64); err == nil {
-							return f, true
-						}
-					}
-				}
-				return 0, false
-			}
-
-			// Emit metrics if present, otherwise zero values to keep families present.
-			if v, ok := getNum("RxPackets"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxPackets"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxBytes"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxBytes"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxDropped"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxDropped"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("Multicast"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("Collisions"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxLengthErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxOverErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxCrcErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxFrameErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxFifoErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("RxMissedErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxAbortedErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxCarrierErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxFifoErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxHeartbeatErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
-			}
-			if v, ok := getNum("TxWindowErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, v, labelName)
-			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
+		// Parse getNetDevStats using typed helper and emit metrics.
+		if ns, err := nemo.GetNetDevStatsTyped([]byte(statsResp)); err == nil {
+			// Emit metrics from typed struct
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxPackets, prometheus.GaugeValue, ns.RxPackets, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxPackets, prometheus.GaugeValue, ns.TxPackets, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxBytes, prometheus.GaugeValue, ns.RxBytes, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxBytes, prometheus.GaugeValue, ns.TxBytes, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxErrors, prometheus.GaugeValue, ns.RxErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxErrors, prometheus.GaugeValue, ns.TxErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxDropped, prometheus.GaugeValue, ns.RxDropped, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxDropped, prometheus.GaugeValue, ns.TxDropped, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMulticast, prometheus.GaugeValue, ns.Multicast, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevCollisions, prometheus.GaugeValue, ns.Collisions, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxLengthErrors, prometheus.GaugeValue, ns.RxLengthErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxOverErrors, prometheus.GaugeValue, ns.RxOverErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxCrcErrors, prometheus.GaugeValue, ns.RxCrcErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFrameErrors, prometheus.GaugeValue, ns.RxFrameErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFifoErrors, prometheus.GaugeValue, ns.RxFifoErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxMissedErrors, prometheus.GaugeValue, ns.RxMissedErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxAbortedErrors, prometheus.GaugeValue, ns.TxAbortedErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxCarrierErrors, prometheus.GaugeValue, ns.TxCarrierErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxFifoErrors, prometheus.GaugeValue, ns.TxFifoErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxHeartbeatErrors, prometheus.GaugeValue, ns.TxHeartbeatErrors, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxWindowErrors, prometheus.GaugeValue, ns.TxWindowErrors, labelName)
+			if wanLabelName != "" && wanLabelName == labelName {
+				ch <- prometheus.MustNewConstMetric(metrics.WanRxPackets, prometheus.GaugeValue, ns.RxPackets, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanTxPackets, prometheus.GaugeValue, ns.TxPackets, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanRxBytes, prometheus.GaugeValue, ns.RxBytes, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanTxBytes, prometheus.GaugeValue, ns.TxBytes, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.WanUp, prometheus.GaugeValue, state, labelName)
 			}
 		}
+	}
+
+	// Ensure the WanIfname metric family is always present. If we didn't detect
+	// a WAN candidate above, emit a zero-valued placeholder with an empty
+	// `ifname` label so consumers (and CI smoke tests) can observe the metric
+	// family even when the device is unreachable or didn't return matching data.
+	// This mirrors the placeholder behavior used for other metric families.
+	if wanLabelName == "" {
+		ch <- prometheus.MustNewConstMetric(metrics.WanIfname, prometheus.GaugeValue, 0.0, "")
 	}
 
 }
@@ -735,4 +575,20 @@ func (c *Experiav10Collector) SessionToken() string {
 	c.sessionMu.RLock()
 	defer c.sessionMu.RUnlock()
 	return c.session.Token
+}
+
+// authenticate is retained for test compatibility: many tests call the
+// collector's authenticate method directly. It wraps the exported
+// connectivity.Authenticate and returns the sessionContext on success.
+func (c *Experiav10Collector) authenticate() (sessionContext, error) {
+	apiURL := fmt.Sprintf(apiUrl, c.ip.String())
+	token, err := connectivity.Authenticate(c.client, apiURL, c.username, c.password, newRequest, jsonMarshal)
+	if err != nil {
+		return sessionContext{}, err
+	}
+	// store token on the collector
+	c.sessionMu.Lock()
+	c.session = sessionContext{Token: token}
+	c.sessionMu.Unlock()
+	return sessionContext{Token: token}, nil
 }

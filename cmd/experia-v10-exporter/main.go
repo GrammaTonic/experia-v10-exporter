@@ -17,11 +17,30 @@ import (
 // It does not start the HTTP server, allowing tests to call Setup without blocking.
 func Setup() (string, *collector.Experiav10Collector, error) {
 	listenAddr := os.Getenv("EXPERIA_V10_LISTEN_ADDR")
-	timeout, err := time.ParseDuration(os.Getenv("EXPERIA_V10_TIMEOUT"))
-	if err != nil {
-		return "", nil, fmt.Errorf("EXPERIA_V10_TIMEOUT invalid: %w", err)
+	if listenAddr == "" {
+		listenAddr = ":9100"
 	}
-	ip := net.ParseIP(os.Getenv("EXPERIA_V10_ROUTER_IP"))
+	// EXPERIA_V10_TIMEOUT is optional; default to 5s when not provided to
+	// make the container usable in CI smoke tests and local runs without an
+	// explicit .env file. If provided, validate the duration.
+	var timeout time.Duration
+	if s := os.Getenv("EXPERIA_V10_TIMEOUT"); s == "" {
+		timeout = 5 * time.Second
+	} else {
+		var err error
+		timeout, err = time.ParseDuration(s)
+		if err != nil {
+			return "", nil, fmt.Errorf("EXPERIA_V10_TIMEOUT invalid: %w", err)
+		}
+	}
+	ipStr := os.Getenv("EXPERIA_V10_ROUTER_IP")
+	if ipStr == "" {
+		// Default to localhost for CI smoke tests and local runs where a real
+		// router IP is not provided. This avoids immediate exit and allows the
+		// container to start; real deployments should set this env var.
+		ipStr = "127.0.0.1"
+	}
+	ip := net.ParseIP(ipStr)
 	if ip == nil {
 		return "", nil, fmt.Errorf("EXPERIA_V10_ROUTER_IP invalid")
 	}

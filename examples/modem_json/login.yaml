@@ -1,0 +1,1897 @@
+Import:
+  - common
+
+View:
+  inputs: [message]
+  styles:
+    backgroundImage:
+      source: login_bg-min.jpg
+      fit: cover
+      alignment: topRight
+  onLoad:
+    executeActionGroup:
+      actions:
+        - executeCode:
+            body: |
+              ensemble.storage.alternative_devices_macs = null;
+              ensemble.storage.portSpeed = null;
+              ensemble.storage.filteredDevicesMac = null;
+              ensemble.storage.extenderFaultFlag = false;
+              ensemble.storage.noMqttSession = false;
+              ensemble.storage.forcePasswordReset = false;
+        - executeConditionalAction:
+            conditions:
+              - if: ${ ensemble.storage.appConfig.deviceType == "v10" }
+                action:
+                  invokeAPI:
+                    name: getUserSettingsPreLogin
+                    onResponse: |
+                      if (getUserSettingsPreLogin.body.status == null) {
+                        password.value = env.v10DefaultPassword;
+                        ensemble.storage.forcePasswordReset = true;
+                      } else if (getUserSettingsPreLogin.body.status.PasswordState == 2) {
+                        password.value = env.v10DefaultPassword;
+                        ensemble.storage.forcePasswordReset = true;
+                      } else {
+                        ensemble.storage.forcePasswordReset = false;
+                      }
+
+              - elseif: ${ ensemble.storage.appConfig.deviceType == "sw2" }
+                action:
+                  invokeAPI:
+                    name: getRole
+                    onResponse: |
+                      // EXTKPN-1807
+                      if ( 
+                        (response.body.status.CurrentRole == "Rent" || response.body.status.CurrentRole == "Package") &&
+                        response.body.status.CurrentBehavior == "Restricted") 
+                      {
+                        ensemble.storage.noMqttSession = true;
+                      }
+                        
+
+                    # executeConditionalAction:
+                    #   conditions:
+                    #     - if: ${ getRole.body.status.CurrentRole == "Rent" || getRole.body.status.CurrentRole == "Package")}
+                    #       action:
+                    #         startTimer:
+                    #           options:
+                    #             repeat: false
+                    #             startAfter: 10
+                    #           onTimer:
+                    #             invokeAPI:
+                    #               name: getMqttClient
+                    #               onResponse: |
+                    #                 if (response.body.status != null) {
+                    #                   if (response.body.status.Status != null) {
+                    #                     if (response.body.status.Status != "Connected") {
+                    #                       ensemble.storage.noMqttSession = true;
+                    #                     }
+                    #                   }
+                    #                 }
+                    #               onError: |
+                    #                 console.log("Mqtt Client not available");
+        - invokeAPI:
+            name: findSSW
+
+  body:
+    Row:
+      children:
+        - Column:
+            styles: 
+              width: "${device.width <= 768 ? device.width : 375}"
+              backgroundColor: white
+              padding: 80 0 0 0
+            children:
+              - Column:
+                  styles: { padding: 24, gap: 30 }
+                  children:
+                    - Text:
+                        text: r@kpn.login.welcome
+                        semantics:
+                          focusable: true
+                        styles:
+                          textStyle:
+                            fontFamily: 'kpnMetricBold'
+                            fontSize: 44
+                            color: 0xFF009900
+                    - Form:
+                        styles: { gap: 20 }
+                        semantics:
+                          focusable: true
+                        onSubmit:
+                          invokeAPI:
+                            name: login
+                            onResponse:
+                              executeConditionalAction:
+                                conditions:
+                                  - if: ${ ensemble.storage.appConfig.deviceType == "v10" }
+                                    action:
+                                      invokeAPI:
+                                        name: getUserSettings
+                                        onResponse:
+                                          executeConditionalAction:
+                                            conditions:
+                                              # password has been changed, navigate to app
+                                              - if: ${ getUserSettings.body.status.PasswordState == 0 }
+                                                action:
+                                                  navigateScreen:
+                                                    name: ${ensemble.storage.appConfig["appNav"]}
+                                                    inputs:
+                                                      selectedIndex: 0
+                                                    options:
+                                                      clearAllScreens: true
+                                              
+                                              # force a password change
+                                              - else:
+                                                action:
+                                                  showDialog:
+                                                    widget: PasswordReset
+                                                    options:
+                                                      minWidth: 400
+                                                      maxWidth: 720
+
+
+                                  - else:
+                                    action:
+                                      navigateScreen:
+                                        name: ${ensemble.storage.appConfig["appNav"]}
+                                        inputs:
+                                          selectedIndex: 0
+                                        options:
+                                          clearAllScreens: true
+                        children:
+
+                          - Text:
+                              text: r@kpn.sign_in
+                              semnatics:
+                                focusable: true
+
+                              styles:
+                                textStyle:
+                                  fontSize: 20
+                                  fontWeight: bold
+                          - TextInput:
+                                id: username
+                                value: admin
+                                hintText: r@kpn.user_name
+                                required: true
+                                enabled: false
+                          - PasswordInput:
+                              semantics:
+                                label: r@kpn.instructions.login.submit_password
+                              id: password
+                              hintText: r@kpn.password
+                              required: true
+                              obscureToggle: true
+                          - Column:
+                              styles: { crossAxis: stretch }
+                              children:
+                                - Button:
+                                    label: r@kpn.sign_in
+                                    submitForm: true
+
+                          # hide if a slave device
+                          - Conditional:
+                              conditions:
+                                - if: ${isMaster()}
+                                  Row:
+                                    styles: { crossAxis: center, gap: 4, mainAxis: spaceAround }
+                                    children:
+                                      - Spacer
+                                      - Text:
+                                          text: r@kpn.login.reset_password_cta
+                                          styles:
+                                            textStyle:
+                                              color: 0xFF0077CC
+                                              fontWeight: w500
+                                      - Icon:
+                                          name: 0xe907
+                                          library: kpnUI
+                                          styles: { color: 0xFF0077CC, size: 20 }
+                                      - Spacer
+                                    onTap:
+                                      showDialog:
+                                        widget: PasswordResetDialogStep1
+                                        options:
+                                          minHeight: 240
+                                          minWidth: 400
+                                          maxWidth: 720
+
+                          # default password for v10
+                          - Conditional:
+                              conditions:
+                                - if: ${ ensemble.storage.appConfig.deviceType == "v10"  }
+                                  Row:
+                                    styles: { crossAxis: center, gap: 4, mainAxis: spaceAround }
+                                    children:
+                                      - Spacer
+                                      - Text:
+                                          text: r@kpn.login.what_is_standard_password
+                                          styles:
+                                            textStyle:
+                                              color: 0xFF0077CC
+                                              fontWeight: w500
+                                      - Spacer
+                                    onTap:
+                                      showDialog:
+                                        widget: PasswordV10
+                                        options:
+                                          minHeight: 180
+                                          minWidth: 400
+                                          maxWidth: 720
+                          - Text:
+                              styles:
+                                textStyle:
+                                  color: 0xffE52E2E
+                                  fontWeight: bold
+                              id: error
+                              text: ${message}
+              - Spacer
+              - Column:
+                  visible: "${device.width <= 768 ? true : false}"
+                  styles:
+                    gap: 12
+                    padding: 12 0
+                  children:
+                    - Divider
+                    - Row:
+                        styles: { mainAxis: spaceBetween, padding: 0 24 }
+                        children:
+                          - Text:
+                              text: r@kpn.model
+                          - Text:
+                              text: ${ensemble.storage.appConfig["deviceTypeLabel"]}
+
+                    - Row:
+                        styles: { mainAxis: spaceBetween, padding: 0 24 }
+                        children:
+                          - Text:
+                              text: r@kpn.mode
+                          - Text:
+                              text: ${ensemble.storage.deviceMode}
+                    - Row:
+                        styles: { mainAxis: spaceBetween, padding: 0 24 }
+                        children:
+                          - Text:
+                              text: r@kpn.login.ui_version
+                          - Text:
+                              text: ${env.uiVersion}
+                    - Row:
+                        styles: { mainAxis: spaceBetween, padding: 0 24 }
+                        children:
+                          - Text:
+                              text: r@kpn.login.firmware_version
+                          - Text:
+                              text: ${ensemble.storage.appConfig["softwareVersion"]}
+
+              # language dropdwon
+              - Column:
+                  styles:
+                    padding: 16 24
+                  children:
+                    - Dropdown:
+                        items:
+                          - { label: "r@kpn.languages.english", "value": "en" }
+                          - { label: "r@kpn.languages.dutch", "value": "nl" }
+                        value: ${app.locale.languageCode}
+                        onChange: |
+                          ensemble.setLocale({ "languageCode": event.data.value });
+                          ensemble.storage.userSelectedLanguage = event.data.value;
+            
+
+              - Divider
+              - Row:
+                  styles: { crossAxis: center }
+                  children:
+                    - Image:
+                        styles: { width: 320, margin: 8 16 }
+                        source: kpn-sidebar-footer.svg
+
+        - Row:
+            visible: "${device.width <= 768 ? false : true}"
+            styles:
+              crossAxis: center
+              mainAxis: center
+              mainAxisSize: max
+              expanded: true
+            children:
+              - Stack:
+                  children:
+                    - Column:
+                        semantics:
+                          focusable: true
+                        styles:
+                          mainAxis: center
+                          crossAxis: center
+                          width: ${device.width - 375}
+                        children:
+                          - Spacer
+                          - Column:
+                              id: circleWrapper
+                              styles:
+                                backgroundImage: ${ensemble.storage.appConfig["deviceImage"]}
+                                crossAxis: center
+                                mainAxis: center
+                                padding: 40 80 0 80
+                                backgroundColor: white
+                                borderRadius: 900
+                                width: 700
+                                height: 700
+                              children:
+                                
+                                - Text:
+                                    text: ${ensemble.storage.appConfig["deviceTypeLabel"]}
+                                    semantics:
+                                      focusable: true
+                                    styles:
+                                      padding: 16
+                                      width: 760
+                                      textAlign: center
+                                      textStyle:
+                                        fontFamily: 'kpnMetricBold'
+                                        fontSize: 60
+                                        color: 0xFF009900
+                                - Spacer:
+                                    styles: { size: 360 }
+                                - Text:
+                                    text: r@kpn.mode ${ensemble.storage.deviceMode}
+                                    semantics:
+                                      focusable: true
+                                    styles:
+                                      textStyle:
+                                        fontSize: 13
+                                # for sw2, indicate if a lease/package device
+                                - Conditional:
+                                    conditions:
+                                      - if: ${ensemble.storage.appConfig.deviceType == "sw2" && 
+                                            (getRole.body.status.CurrentRole == "Rent" || getRole.body.status.CurrentRole == "Package")}
+                                        widget:
+                                          Text:
+                                            semantics:
+                                              focusable: true
+                                            text: r@kpn.type r@kpn.typeRental
+                                            className: text13
+                                - Text:
+                                    text: r@kpn.login.firmware_version ${ensemble.storage.appConfig["softwareVersion"]}
+                                    className: text13
+                                    semantics:
+                                      focusable: true
+                                - Text:
+                                    text: r@kpn.serial_number ${ensemble.storage.getDeviceInfo.SerialNumber}
+                                    className: text13
+                                    semantics:
+                                      focusable: true
+                                - Text:
+                                    text: "r@kpn.login.ui_version ${env.uiVersion}"
+                                    className: text13
+                                    semantics:
+                                      focusable: true
+                                - Row:
+                                    styles:
+                                      mainAxis: center
+                                      padding: 16 0 0 0
+                                      gap: 12
+                                    children:
+
+                                      - Conditional:
+                                          conditions:
+                                            - if: |-
+                                                ${
+                                                  ensemble.storage.appConfig.deviceType == "v12" || 
+                                                  ensemble.storage.appConfig.deviceType == "v10" ||
+                                                  ensemble.storage.appConfig.deviceType == "sw2" 
+                                                }
+                                              widget:
+                                                Icon:
+                                                  semantics:
+                                                    hint: r@kpn.instructions.open
+                                                  name: 0xe910
+                                                  library: kpnUI
+                                                  styles:
+                                                    size: 20
+                                                    padding: 8
+                                                    color: 0xFF0077CC
+                                                    borderColor: 0xFF0077CC
+                                                    borderRadius: 100
+                                                  onTap:
+                                                    executeConditionalAction:
+                                                      conditions:
+                                                        - if: ${ ensemble.storage.appConfig.deviceType == "v12" || ensemble.storage.appConfig.deviceType == "sw2" || ensemble.storage.appConfig.deviceType == "v10a"}
+                                                          action:
+                                                            invokeAPI:
+                                                              name: getRootLEDs
+                                                              onResponse: |
+                                                                circleWrapper.backgroundImage = null;
+                                                                ledWrapper.visible = true;
+                                                        - elseif: ${ ensemble.storage.appConfig.deviceType == "v10" }
+                                                          action:
+                                                            invokeAPI:
+                                                              name: getV10Leds
+                                                              onResponse: |
+                                                                circleWrapper.backgroundImage = null;
+                                                                ledWrapper.visible = true;
+                                      - Conditional:
+                                          conditions:
+                                            - if: ${ isMaster() }
+                                              Stack:
+                                                styles:
+                                                  alignChildren: topRight
+                                                children:
+                                                  - Icon:
+                                                      name: 0xe978
+                                                      library: kpnUI
+                                                      semantics:
+                                                        label: r@kpn.extender_count_multiple
+                                                        hint: r@kpn.instructions.open
+                                                      styles:
+                                                        size: 20
+                                                        padding: 8
+                                                        color: 0xFF0077CC
+                                                        borderColor: 0xFF0077CC
+                                                        borderRadius: 100
+                                                      onTap:
+                                                        showDialog:
+                                                          widget: Extenders
+                                                          options:
+                                                            minHeight: 240
+                                                            maxWidth: 600
+                                                  - BlikingDot:
+                                                      inputs:
+                                                        colorA: 0xFFDEDEDE
+                                                        colorB: red
+                                      - Conditional:
+                                          conditions:
+                                            - if: ${ensemble.storage.appConfig.deviceType == "v14"}
+                                              widget: 
+                                                Icon:
+                                                  name: 0xE8E1
+                                                  library: kpnUI
+                                                  semantics:
+                                                    focusable: true
+                                                  # have to give label to speed in common for multilanguage 
+                                                  styles:
+                                                    size: 20
+                                                    padding: 8
+                                                    color: 0xFF0077CC
+                                                    borderColor: 0xFF0077CC
+                                                    borderRadius: 100
+                                                  onTap:
+                                                    showDialog:
+                                                      widget: SpeedTestDialog
+                                                      options:
+                                                        style: none
+                                                        minHeight: 340
+                                                        minWidth: 350
+                                                        maxWidth: 700  
+                          - Spacer
+                    
+                    - Column:
+                        id: ledWrapper
+                        visible: false
+                        styles:
+                          mainAxis: center
+                          crossAxis: center
+                          width: ${device.width - 375}
+                        children:
+                          - Spacer
+                          - Column:
+                              styles:
+                                backgroundColor: 0xFF303030
+                                crossAxis: center
+                                mainAxis: spaceBetween
+                                padding: 80
+                                borderRadius: 900
+                                width: 700
+                                height: 700
+                              children:
+                                - Text:
+                                    semantics:
+                                      focsuable: true
+                                    text: ${ensemble.storage.appConfig["deviceTypeLabel"]}
+                                    styles:
+                                      padding: 16
+                                      width: 760
+                                      textAlign: center
+                                      textStyle:
+                                        fontFamily: 'kpnMetricBold'
+                                        fontSize: 60
+                                        color: white
+                                - Spacer
+                                - Conditional:
+                                    conditions:
+                                      - if: ${ getRootLEDs.isLoading }
+                                        widget:
+                                          Spacer:
+                                            styles:
+                                              size: 10
+                                      - elseif: ${ ensemble.storage.appConfig.deviceType == "v12" }
+                                        widget:
+                                          Row:
+                                            styles:
+                                              gap: 8
+                                              mainAxis: center
+                                            children:
+                                              - LedInfo:
+                                                  inputs:
+                                                    type: internet
+                                                    green: ${getRootLEDs.body.status.InternetGreen}
+                                                    red: null
+                                              - LedInfo:
+                                                  inputs:
+                                                    type: wifi
+                                                    green: ${getRootLEDs.body.status.WifiGreen}
+                                                    red: ${getRootLEDs.body.status.WifiRed}
+                                              - LedInfo:
+                                                  inputs:
+                                                    type: power
+                                                    green: ${getRootLEDs.body.status.PowerGreen}
+                                                    red: ${getRootLEDs.body.status.PowerRed}
+                                              - LedInfo:
+                                                  inputs:
+                                                    type: tv
+                                                    green: ${getRootLEDs.body.status.TvGreen}
+                                                    red: null
+                                              - LedInfo:
+                                                  inputs:
+                                                    type: phone
+                                                    green: ${getRootLEDs.body.status.PhoneGreen}
+                                                    red: null
+                                        
+                                      - elseif: ${ ensemble.storage.appConfig.deviceType == "sw2" }
+                                        widget:
+                                          LedBar:
+                                            inputs:
+                                              color: ${getRootLEDs.body.status.Root.CurrentColor}
+                                      # for now having the same widgets as it has same LEDBar and one Led for wifi, once we get to know API response, will update based on color scheme.
+                                      - elseif: ${ ensemble.storage.appConfig.deviceType == "v10a" }
+                                        widget:
+                                          Row:
+                                            children:
+                                            - LedBar:
+                                                inputs:
+                                                  color: ${getRootLEDs.body.status.Root.CurrentColor}
+                                            - LedInfo:
+                                                inputs:
+                                                  type: wifi
+                                                  green: ${getRootLEDs.body.status.WifiGreen}
+                                                  red: ${getRootLEDs.body.status.WifiRed}
+                                      - elseif: ${ ensemble.storage.appConfig.deviceType == "v10" }
+                                        widget:
+                                          Row:
+                                            styles:
+                                              gap: 32
+                                              mainAxis: center
+                                            children:
+                                              - Column:
+                                                  styles:
+                                                    gap: 12
+                                                    mainAxis: center
+                                                  children:
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: services
+                                                          red: ${getV10Leds.body.status.Service_Red}
+                                                          blue: ${getV10Leds.body.status.Service_Blue}
+                                                          yellow: ${getV10Leds.body.status.Service_Yellow}
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: eco
+                                                          blue: ${getV10Leds.body.status.Eco_Blue}
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: internet
+                                                          red: ${getV10Leds.body.status.Internet_Red}
+                                                          blue: ${getV10Leds.body.status.Internet_Blue}
+                                                          yellow: ${getV10Leds.body.status.Internet_Yellow}
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: wireless
+                                                          red: ${getV10Leds.body.status.Wireless_Red}
+                                                          blue: ${getV10Leds.body.status.Wireless_Blue}
+                                                          yellow: ${getV10Leds.body.status.Wireless_Yellow}
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: power
+                                                          red: ${getV10Leds.body.status.Power_Red}
+                                                          blue: ${getV10Leds.body.status.Power_Blue}
+                                                          yellow: ${getV10Leds.body.status.Power_Yellow}
+                                              - Column:
+                                                  styles:
+                                                    gap: 12
+                                                    mainAxis: center
+                                                  children:
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: DSL 1
+                                                          color: ${getV10Leds.body.status.DSL_L1}
+                                                    - LedItemV10:
+                                                        inputs:
+                                                          type: DSL 2
+                                                          color: ${getV10Leds.body.status.DSL_L2}
+                                              
+                                        
+                                - Spacer
+                                - Button:
+                                    label: Refresh
+                                    onTap:
+                                      executeActionGroup:
+                                        actions:
+                                          - executeCode:
+                                              body: |
+                                                if (ledError)
+                                                  ledError.visible = false;
+                                          - executeConditionalAction:
+                                              conditions:
+                                                - if: ${ ensemble.storage.appConfig.deviceType == "v12" || ensemble.storage.appConfig.deviceType == "sw2" }
+                                                  action:
+                                                    invokeAPI:
+                                                      name: getRootLEDs
+                                                - elseif: ${ ensemble.storage.appConfig.deviceType == "v10" }
+                                                  action:
+                                                    invokeAPI:
+                                                      name: getV10Leds
+                                    style:
+                                      margin:
+                                - Icon:
+                                    name: 0xe993
+                                    library: kpnUI
+                                    styles:
+                                      size: 40
+                                      color: white
+                                      margin: 16
+                                    onTap: |
+                                      circleWrapper.backgroundImage = ensemble.storage.appConfig["deviceImage"];
+                                      ledWrapper.visible = false;
+                          - Spacer
+
+
+                    # Messages to appear on top
+                    - Column:
+                        styles:
+                          margin: 24
+                          width: ${device.width - 425}
+                        children:
+                          - Conditional:
+                              conditions:
+                                - if: ${ensemble.storage.internetConnected == false}
+                                  Column:
+                                    styles:
+                                      shadowColor: 0x11000000
+                                      shadowRadius: 3
+                                      backgroundColor: 0xFFFBDFDF
+                                      borderRadius: 8
+                                      mainAxisSize: min
+                                    children:
+                                      - Divider:
+                                          styles:
+                                            thickness: 5
+                                            color: 0xFFE52E2E
+                                      - Row:
+                                          styles:
+                                            gap: 8
+                                            padding: 8 16
+                                          children:
+                                            - Icon:
+                                                name: error_outline
+                                                styles:
+                                                  size: 20
+                                                  color: 0xFFE52E2E
+                                            - Text:
+                                                text: r@kpn.no_connectivity
+                                                styles:
+                                                  expanded: true
+                                                  textStyle:
+                                                    overflow: wrap
+                                - elseif: ${ensemble.storage.noMqttSession == true}
+                                  Column:
+                                    styles:
+                                      shadowColor: 0x11000000
+                                      shadowRadius: 3
+                                      backgroundColor: 0xFFFBDFDF
+                                      borderRadius: 8
+                                      mainAxisSize: min
+                                    children:
+                                      - Divider:
+                                          styles:
+                                            thickness: 5
+                                            color: 0xFFE52E2E
+                                      - Row:
+                                          styles:
+                                            gap: 8
+                                            padding: 8 16
+                                          children:
+                                            - Icon:
+                                                name: error_outline
+                                                styles:
+                                                  size: 20
+                                                  color: 0xFFE52E2E
+                                            - Text:
+                                                text: r@kpn.no_mqtt_session
+                                                styles:
+                                                  expanded: true
+                                                  textStyle:
+                                                    overflow: wrap
+
+                          - Conditional:
+                              conditions:
+                                - if: ${isMaster() == false}
+                                  SlaveDeviceMessage:
+                                    inputs:
+                                      masterIp: ${ensemble.storage.masterIp}
+
+BlikingDot:
+  inputs:
+    - colorA
+    - colorB
+  onLoad:
+    startTimer:
+      options:
+        repeat: true
+        repeatInterval: 1
+        startAfter: 0            
+      onTimer:
+        executeCode:
+          body: |
+            var d = new Date();
+            if (d.getSeconds() % 2 == 0)
+              dot.backgroundColor = colorA;
+            else
+              dot.backgroundColor = colorB;
+      onTimerComplete:
+        executeCode:
+          body: |
+            ot.backgroundColor = colorB;
+  body:
+    Column:
+      styles:
+        visible: ${ensemble.storage.extenderFaultFlag}
+      children:
+        - Shape:
+            id: dot
+            type: circle
+            styles:
+              width: 12
+              backgroundColor: ${ colorA }
+
+LedInfo:
+  inputs:
+    - type
+    - green
+    - red
+  onLoad: |
+    if (red != null && red.CurrentColor != "Off")
+      led.borderColor = "red";
+    else if (green.CurrentColor != "Off") 
+      led.borderColor = "green";
+  body:
+    Column:
+      semantics:
+        label: ${type.toUpperCase()}
+      styles:
+        crossAxis: center
+        gap: 8
+        width: 70
+      children:
+        - Icon:
+            name: ${getLedIcon(type)}
+            library: kpnUI
+            styles:
+              size: 24
+              color: white
+        - Text:
+            text: ${type.toUpperCase()}
+            styles:
+              textStyle:
+                fontSize: 13
+                fontWeight: w600
+                color: white
+        - Conditional:
+            conditions:
+              - if: ${green.CurrentColor == "BlinkGreen"}
+                Lottie:
+                  source: blink_green.json
+                  styles:
+                    width: 20
+                    height: 20
+              - else:
+                Column:
+                  id: led
+                  styles:
+                    borderColor: grey
+                    borderWidth: 3
+                    borderRadius: 20
+                    width: 16
+                    height: 16
+                  children:
+                    - Spacer:
+                        styles:
+                          size: 10
+
+LedItemV10:
+  inputs:
+    - type
+    - red
+    - blue
+    - yellow
+  body:
+    Row:
+      styles:
+        crossAxis: center
+        gap: 8
+      children:
+        - Conditional:
+            conditions:
+              - if: ${ red != null && red.CurrentColor == "PlainRed"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 12
+                      height: 12
+                      backgroundColor: red
+              - elseif: ${blue.CurrentColor == "PlainBlue"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 12
+                      height: 12
+                      backgroundColor: blue
+              - elseif: ${yellow.CurrentColor == "PlainYellow"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 12
+                      height: 12
+                      backgroundColor: green
+              - else:
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 12
+                      height: 12
+                      backgroundColor: grey
+        - Text:
+            semantics:
+              label: ${blue.CurrentColor}
+            text: ${type.toUpperCase()}
+            styles:
+              textStyle:
+                fontSize: 12
+                fontWeight: w600
+                color: white
+
+
+LedDslItemV10:
+  inputs:
+    - type
+    - color
+  body:
+    Column:
+      styles:
+        crossAxis: center
+        gap: 8
+        width: 70
+      children:
+        - Text:
+            text: ${type.toUpperCase()}
+            styles:
+              textStyle:
+                fontSize: 13
+                fontWeight: w600
+                color: white
+        - Conditional:
+            conditions:
+              - if: ${color.CurrentColor == "PlainRed"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 16
+                      height: 16
+                      backgroundColor: red
+              - elseif: ${color.CurrentColor == "PlainGreen"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 16
+                      height: 16
+                      backgroundColor: green
+              - elseif: ${color.CurrentColor == "PlainBlue"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 16
+                      height: 16
+                      backgroundColor: blue
+              - elseif: ${color.CurrentColor == "PlainYellow"}
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 16
+                      height: 16
+                      backgroundColor: orange
+              - else:
+                widget:
+                  Shape:
+                    type: circle
+                    styles:
+                      width: 16
+                      height: 16
+                      backgroundColor: grey
+
+
+## Used for SW2 which only has one LED
+LedBar:
+  inputs:
+    - color
+  onLoad:
+    executeConditionalAction:
+      conditions:
+        - if: ${ color == "PlainGreen" }
+          action:
+            executeCode:
+              body: |
+                led.backgroundColor = "green";
+        - elseif: ${ color == "PlainRed" }
+          action:
+            executeCode:
+              body: |
+                led.backgroundColor = "red";
+        - elseif: ${ color == "PlainBlue" }
+          action:
+            executeCode:
+              body: |
+                led.backgroundColor = "blue";
+        - elseif: ${ color == "PlainRedGreen" }
+          action:
+            executeCode:
+              body: |
+                led.backgroundColor = "orange";
+        - elseif: ${ color == "PlainRedBlue" }
+          action:
+            executeCode:
+              body: |
+                led.backgroundColor = "purple";
+        - elseif: ${ color == "BlinkRed" }
+          action:
+            startTimer:
+              options:
+                repeat: true
+                maxNumberOfTimes: 300
+                repeatInterval: 1
+                startAfter: 0            
+              onTimer:
+                executeCode:
+                  body: |
+                    var d = new Date();
+                    if (d.getSeconds() % 2 == 0)
+                      led.backgroundColor = "red";
+                    else
+                      led.backgroundColor = "black";
+        - elseif: ${ color == "BlinkBlue" }
+          action:
+            startTimer:
+              options:
+                repeat: true
+                maxNumberOfTimes: 300
+                repeatInterval: 1
+                startAfter: 0            
+              onTimer:
+                executeCode:
+                  body: |
+                    var d = new Date();
+                    if (d.getSeconds() % 2 == 0)
+                      led.backgroundColor = "blue";
+                    else
+                      led.backgroundColor = "black";
+        - elseif: ${ color == "BlinkGreen" }
+          action:
+            startTimer:
+              options:
+                repeat: true
+                maxNumberOfTimes: 300
+                repeatInterval: 1
+                startAfter: 0            
+              onTimer:
+                executeCode:
+                  body: |
+                    var d = new Date();
+                    if (d.getSeconds() % 2 == 0)
+                      led.backgroundColor = "green";
+                    else
+                      led.backgroundColor = "black";
+        - elseif: ${ color == "BlinkRedGreen" }
+          action:
+            startTimer:
+              options:
+                repeat: true
+                maxNumberOfTimes: 300
+                repeatInterval: 1
+                startAfter: 0            
+              onTimer:
+                executeCode:
+                  body: |
+                    var d = new Date();
+                    if (d.getSeconds() % 2 == 0)
+                      led.backgroundColor = "orange";
+                    else
+                      led.backgroundColor = "black";
+        - elseif: ${ color == "BlinkRedBlue" }
+          action:
+            startTimer:
+              options:
+                repeat: true
+                maxNumberOfTimes: 300
+                repeatInterval: 1
+                startAfter: 0            
+              onTimer:
+                executeCode:
+                  body: |
+                    var d = new Date();
+                    if (d.getSeconds() % 2 == 0)
+                      led.backgroundColor = "purple";
+                    else
+                      led.backgroundColor = "black";
+        - else:
+          action:
+            executeCode:
+              body: |
+                ledError.visible = true;
+  body:
+    Column:
+      styles:
+        gap: 12
+      children:
+        - Column:
+            id: led
+            styles:
+              width: 180
+              height: 8
+              borderRadius: 8
+              backgroundColor: grey
+            children:
+              - Spacer:
+                  styles:
+                    size: 8
+        
+        - Text:
+            id: ledError
+            text: r@kpn.led_error
+            visible: false
+            styles:
+              textStyle:
+                color: white
+
+
+Extenders:
+  body:
+    Column:
+      children:
+        - FittedRow:
+            styles: 
+              childrenFits:
+                - 1
+                - auto
+            children:
+              - GreenSubtitle:
+                  inputs:
+                    title: Extenders
+              - CloseDialogIcon
+        - Conditional:
+            conditions:
+              - if: ${findSSW.body == null}
+                Row:
+                  semantics:
+                    focusable: true
+                  styles:
+                    crossAxis: center
+                    gap: 16
+                  children:
+                    - Progress
+                    - Text:
+                        text: r@kpn.login.extenders.searching
+                        semantics:
+                          focusable: true
+              - elseif: ${findSSW.body.errors != null }
+                Text:
+                  text: r@kpn.error
+                  semantics:
+                    focusable: true
+              - elseif: ${findSSW.body.status.length > 0}
+                Column:
+                  item-template:
+                    data: ${findSSW.body.status}
+                    name: m
+                    template:
+                      ExtenderCard:
+                        inputs:
+                          mac: ${m}
+              - elseif: ${findSSW.body.status.length == 0 }
+                Row:
+                  styles:
+                    crossAxis: center
+                    gap: 16
+                  children:
+                    - Text:
+                        text: r@kpn.login.extenders.no_extenders
+                        semantics:
+                          focusable: true
+
+ExtenderCard:
+  inputs:
+    - mac
+  onLoad:
+    invokeAPI:
+      id: sswInfo
+      name: getSSWInfo
+      inputs:
+        mac: ${mac}
+
+  body:
+    Column:
+      semantics: 
+        focusable: true
+      styles:
+        padding: 8 0
+      children:
+        - Conditional:
+            conditions:
+              - if: ${sswInfo.body.errors != null}
+                Text:
+                  semantics:
+                    focusable: true 
+                  text: |-
+                    Error getting details for 
+                    ${mac}
+                  styles:
+                    textStyle:
+                      fontSize: 12
+              - else:
+                Row:
+                  semantics:
+                    focusable: true 
+                  styles:
+                    crossAxis: center
+                  children:
+                    - Icon:
+                        styles:
+                          color: "${ sswInfo.body.status.Active ? (sswInfo.body.status.SSW.State == 'Synced' ? 0xFF009900 : 0xFFE52E2E) : 0xFF939393 }"
+                          size: 80
+                          padding: 8
+                        name: ${getDeviceIcon(sswInfo.body.status.SSW.ModelName)}
+                        library: kpnSI
+                    - Column:
+                        styles:
+                          gap: 4
+                        children:        
+                          - Text:
+                              text: "${ sswInfo.body.status.Active ? (sswInfo.body.status.SSW.State == 'Synced' ? 'r@kpn.login.extenders.extender_accessible' : 'r@kpn.login.extenders.extender_problem') : 'r@kpn.login.extenders.extender_noaccessible' }"
+                              styles:
+                                textStyle:
+                                  color: "${ sswInfo.body.status.Active ? (sswInfo.body.status.SSW.State == 'Synced' ? 0xFF009900 : 0xFFE52E2E) : 0xFF939393 }"
+                                  fontSize: 12
+
+                          - Text:
+                              text: ${sswInfo.body.status.Name}
+                              styles:
+                                selectable: true
+                                textStyle:
+                                  fontWeight: bold
+                          - Text:
+                              text: ${mac}
+                              styles:
+                                selectable: true
+                                textStyle:
+                                  color: grey
+                                  fontSize: 12
+                    - Spacer
+                    - Conditional:
+                        conditions:
+                          - if: ${ getFirstReachableIpv4(sswInfo.body.status.IPv4Address) != "" }
+                            widget:
+                              Button:
+                                label: ${getFirstReachableIpv4(sswInfo.body.status.IPv4Address)}
+                                styles:
+                                  width: 160
+                                onTap:
+                                  openUrl:
+                                    url: http://${getFirstReachableIpv4(sswInfo.body.status.IPv4Address)}
+                                    openInExternalApp: true
+                          - else:
+                            widget:
+                              Text:
+                                text: r@kpn.login.extenders.extender_has_no_ip
+
+PasswordReset:
+  Column:
+    semantics:
+      focusable: true 
+    styles: 
+      backgroundColor: white
+    children:
+      - Form:
+          styles:
+            labelPosition: '${device.width > 768 ? "start" : "top"}'
+            gap: 16
+          children:
+            - TextInput:
+                id: currentPassword
+                label: r@kpn.modem.current_password
+                obscureText: true
+                obscureToggle: true
+                required: true
+                value: ${env.v10DefaultPassword}
+            - PasswordInput:
+                id: newPassword
+                label: r@kpn.modem.new_password
+                obscureText: true
+                obscureToggle: true
+                required: true
+                validator:
+                  maxLength: 64
+                onKeyPress: |
+                  //@code
+                  var flag = validateNewPassword(this.value, CharacterCountPass, CharacterCountFail, complexityPass,
+                  complexityFail, asciiPass, asciiFail, repeatingCharacterPass, repeatingCharacterFail)
+                  if (flag) {
+                    if (newPasswordConfirm.value === newPassword.value) {
+                      passwordChangeStatus.text = "";
+                      changePasswordBtn.enabled = true;
+                    } else {
+                      passwordChangeStatus.text = "r@kpn.modem.passwords_not_matching";
+                      changePasswordBtn.enabled = false;
+                    }
+                  } else {
+                    changePasswordBtn.enabled = false;
+                  }
+
+            - PasswordInput:
+                id: newPasswordConfirm
+                label: r@kpn.modem.confirm_new_password
+                obscureToggle: true
+                showToggle: true
+                required: true
+                validator:
+                  maxLength: 64
+                onKeyPress: |
+                  //@code
+                  var flag = validateConfirmPassword(this.value)
+                  if (flag) {
+                      if (newPasswordConfirm.value == newPassword.value) {
+                        passwordChangeStatus.text = "";
+                        changePasswordBtn.enabled = true;
+                      } else {
+                        passwordChangeStatus.text = "r@kpn.modem.passwords_not_matching";
+                        changePasswordBtn.enabled = false;
+                      }
+                  } else {
+                    passwordChangeStatus.text = "r@kpn.modem.passwords_not_matching";
+                    changePasswordBtn.enabled = false;
+                  }
+
+            - Column:
+                styles: { gap: 8, padding: 8 16, borderColor: grey }
+                children:
+                  - Text:
+                      semantics:
+                        focusable: true 
+                      text: r@kpn.modem.password_requirements_title
+                  - Row:
+                      styles: { crossAxis: center }
+                      children:
+                        - Icon:
+                            id: CharacterCountPass
+                            name: 0xe91d
+                            library: kpnUI
+                            visible: false
+                            styles: { color: 0xFF009900, size: 16 }
+                        - Icon:
+                            id: CharacterCountFail
+                            name: 0xe936
+                            library: kpnUI
+                            styles: { color: red, size: 16 }
+                        - Spacer:
+                            styles: { size: 8 }
+                        - Text:
+                            text: r@kpn.modem.password_requirements_1
+
+                  - Row:
+                      styles: { crossAxis: center }
+                      children:
+                        - Icon:
+                            id: asciiPass
+                            name: 0xe91d
+                            library: kpnUI
+                            visible: false
+                            styles: { color: 0xFF009900, size: 16 }
+                        - Icon:
+                            id: asciiFail
+                            name: 0xe936
+                            library: kpnUI
+                            styles: { color: red, size: 16 }
+                        - Spacer:
+                            styles: { size: 8 }
+                        - Text:
+                            semantics:
+                              focusable: true 
+                            text: r@kpn.modem.password_requirements_2
+
+
+                  - Row:
+                      semantics:
+                        focusable: true 
+                      styles: { crossAxis: center }
+                      children:
+                        - Icon:
+                            id: complexityPass
+                            name: 0xe91d
+                            visible: false
+                            library: kpnUI
+                            styles: { color: 0xFF009900, size: 16 }
+                        - Icon:
+                            id: complexityFail
+                            name: 0xe936
+                            library: kpnUI
+                            styles: { color: red, size: 16 }
+                        - Spacer:
+                            styles: { size: 8 }
+                        - Text:
+                            text: r@kpn.modem.password_requirements_3
+                            styles: 
+                              width: 350
+                              textStyle: { overflow: wrap }
+
+                  - Row:
+                      styles: { crossAxis: center }
+                      children:
+                        - Icon:
+                            id: repeatingCharacterPass
+                            name: 0xe91d
+                            library: kpnUI
+                            styles: { color: 0xFF009900, size: 16 }
+                        - Icon:
+                            id: repeatingCharacterFail
+                            name: 0xe936
+                            visible: false
+                            library: kpnUI
+                            styles: { color: red, size: 16 }
+                        - Spacer:
+                            styles: { size: 8 }
+                        - Text:
+                            text: r@kpn.modem.password_requirements_4
+                            styles: 
+                              width: 350
+                              textStyle: { overflow: wrap }
+            - Text:
+                id: passwordChangeStatus
+      - Row:
+          styles: { mainAxis: end, crossAxis: center, gap: 20 }
+          children:
+
+            - Button:
+                id: changePasswordBtn
+                label: r@kpn.modify
+                enabled: false
+                validateForm: true
+                onTap:
+                  invokeAPI:
+                    name: changePassword
+                    inputs:
+                      password: ${newPassword.value}
+                      currentPassword: ${env.v10DefaultPassword}
+                    onResponse: |
+                      if (response.body.status == false) {
+                        passwordChangeStatus.text = "r@kpn.modem.invalid_password";
+                      } else {
+                        ensemble.navigateScreen(ensemble.storage.appConfig["appNav"]);
+                      }
+
+PasswordV10:
+  body:
+    Column:
+      styles: 
+        backgroundColor: white
+        gap: 24
+      children:
+        - FlexRow:
+            styles:
+              mainAxis: spaceBetween
+            children:
+              - Text:
+                  text: r@kpn.login.v10_standard_password
+                  styles:
+                    flexMode: expanded
+              - Column:
+                  styles:
+                    flexMode: none
+                  children:
+                    - CloseDialogIcon
+
+        - Row:
+            styles:
+              gap: 24
+            children:
+              - Button:
+                  label: r@kpn.login.password_copy_button
+                  onTap:
+                    copyToClipboard:
+                      value: ${env.v10DefaultPassword}
+                      onSuccess: |
+                        copied.visible = true;
+
+
+              - Text:
+                  id: copied
+                  visible: false
+                  text: r@kpn.login.password_copied_to_clipboard
+
+
+PasswordResetDialogStep1:
+  body:
+    Column:
+      styles:
+        gap: 16
+      children:
+        - GreenTitle:
+            inputs:
+              title: r@kpn.login.reset_password_title
+        - Row:
+            semantics:
+              label: r@kpn.login.reset_password_step1
+            styles: { gap: 5 }
+            children:
+              - Icon:
+                  name: 0xe907
+                  library: kpnUI
+              - Text:
+                  styles: { expanded: true }
+                  text: r@kpn.login.reset_password_step1
+        - Row:
+            semantics:
+              label: '${  ensemble.storage.appConfig.deviceType == "sw1" || ensemble.storage.appConfig.deviceType == "sw2" ? "r@kpn.login.reset_password_extender_step2" : "r@kpn.login.reset_password_step2" }'
+            styles: { gap: 5 }
+            children:
+              - Icon:
+                  name: 0xe924
+                  library: kpnUI
+              - Text:
+                  styles: { expanded: true }
+                  text: '${  ensemble.storage.appConfig.deviceType == "sw1" || ensemble.storage.appConfig.deviceType == "sw2" ? "r@kpn.login.reset_password_extender_step2" : "r@kpn.login.reset_password_step2" }'
+        - Row:
+            semantics:
+              label: '${ ensemble.storage.appConfig.deviceType == "v10" ? "r@kpn.login.reset_password_v10_step3" : "r@kpn.login.reset_password_step3" }'
+            styles: { gap: 5 }
+            children:
+              - Icon:
+                  name: 0xe924
+                  library: kpnUI
+              - Text:
+                  styles: { expanded: true }
+                  text: '${ ensemble.storage.appConfig.deviceType == "v10" ? "r@kpn.login.reset_password_v10_step3" : "r@kpn.login.reset_password_step3" }'
+        - Row:
+            styles: { mainAxis: end, crossAxis: center, gap: 24, padding: 8 0 }
+            children:
+              - Button:
+                  className: secondaryButton
+                  label: r@kpn.cancel
+                  onTap: closeAllDialogs
+              - Button:
+                  id: resetPasswordButton
+                  label: r@kpn.login.reset_password
+                  onTap:
+                    invokeAPI:
+                      name: startPasswordRecovery
+                      onResponse:
+                        showDialog:
+                          widget: PasswordResetDialogStep2
+                          options:
+                            style: none
+                            minHeight: 340
+                            maxWidth: 720
+
+
+PasswordResetDialogStep2:
+  onLoad:
+    invokeAPI:
+      name: startPasswordRecoveryEvents
+      onResponse:
+        startTimer:
+          id: passwordResetTimer
+          options:
+            repeat: true
+            startAfter: 0
+            repeatInterval: 15
+            maxNumberOfTimes: 20
+          onTimer:
+            invokeAPI:
+              name: getPasswordRecoveryEvents
+              onResponse: |
+                //@code
+                if (response.body.status.events.length > 0) {
+                  response.body.status.events.map(function (e) {
+                    if (e.data.handler == 'PasswordRecovery' && e.data.object.reason == 'button_pressed') {
+                      ensemble.invokeAPI("resetPassword");
+                    }
+                  });
+                }
+
+          onTimerComplete: |
+            //@code
+            ensemble.debug('NO button_pressed');
+
+  body:
+    Column:
+      styles: { backgroundColor: white, borderRadius: 8 }
+      children:
+        - Progress:
+            display: linear
+            countdown: 300
+            styles: { color: 0xFF009900, thickness: 8 }
+            onCountdownComplete: |
+              //@code
+              // if password reset not called, change icon
+              if (resetPassword.body == null) {
+                step2Icon.name = 0xe936;
+                step2Icon.color = "red";
+              }
+
+        - Column:
+            styles: { fontSize: 16, gap: 16, padding: 16 }
+            children:
+              - GreenTitle:
+                  inputs:
+                    title: r@kpn.login.reset_password_title
+              - Row:
+                  styles: { gap: 5 }
+                  children:
+                  - Icon:
+                      name: 0xe91d
+                      library: kpnUI
+                  - Text:
+                      styles: { overflow: wrap, expanded: true }
+                      text: r@kpn.login.reset_password_step1
+              - Row:
+                  styles: { gap: 5 }
+                  children:
+                  - Icon:
+                      id: step2Icon
+                      name: 0xe907
+                      library: kpnUI
+                  - Text:
+                      styles: { overflow: wrap, expanded: true }
+                      text: '${  ensemble.storage.appConfig.deviceType == "sw1" || ensemble.storage.appConfig.deviceType == "sw2" ? "r@kpn.login.reset_password_extender_step2" : "r@kpn.login.reset_password_step2" }'
+              - Row:
+                  styles: { gap: 5 }
+                  children:
+                  - Icon:
+                      name: 0xe924
+                      library: kpnUI
+                  - Text:
+                      styles: { overflow: wrap, expanded: true }
+                      text: '${ ensemble.storage.appConfig.deviceType == "v10" ? "r@kpn.login.reset_password_v10_step3" : "r@kpn.login.reset_password_step3" }'
+              - Row:
+                  id: buttons
+                  styles: { mainAxis: end, crossAxis: center, gap: 24, padding: 8 0 }
+                  children:
+                    - Button:
+                        className: secondaryButton
+                        label: r@kpn.cancel
+                        onTap: closeAllDialogs
+
+PasswordResetDialogStep3:
+  body:
+    Column:
+      styles: { backgroundColor: white, borderRadius: 8 }
+      children:
+        - Column:
+            styles: { fontSize: 16, gap: 16, padding: 16 }
+            children:
+              - GreenTitle:
+                  inputs:
+                    title: r@kpn.login.reset_password_title
+              - Row:
+                  styles: { gap: 5 }
+                  children:
+                    - Icon:
+                        name: 0xe91d
+                        library: kpnUI
+                    - Text:
+                        styles: { overflow: wrap, expanded: true }
+                        text: r@kpn.login.reset_password_step1
+              - Row:
+                  styles: { gap: 5 }
+                  children:
+                    - Icon:
+                        name: 0xe91d
+                        library: kpnUI
+                    - Text:
+                        styles: { overflow: wrap, expanded: true }
+                        text: '${  ensemble.storage.appConfig.deviceType == "sw1" || ensemble.storage.appConfig.deviceType == "sw2" ? "r@kpn.login.reset_password_extender_step2" : "r@kpn.login.reset_password_step2" }'
+              - Row:
+                  styles: { gap: 5 }
+                  children:
+                    - Icon:
+                        name: 0xe907
+                        library: kpnUI
+                    - Text:
+                        styles: { overflow: wrap, expanded: true }
+                        text: '${ ensemble.storage.appConfig.deviceType == "v10" ? "r@kpn.login.reset_password_v10_step3" : "r@kpn.login.reset_password_step3" }'
+              - Text:
+                  id: resetAPIStatus
+              - Row:
+                  id: buttons
+                  styles: { mainAxis: end, crossAxis: center, gap: 24, padding: 8 0 }
+                  children:
+                    - Button:
+                        className: secondaryButton
+                        label: r@kpn.continue
+                        onTap: closeAllDialogs
+
+
+API:
+
+  login:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      Content-Type: 'application/x-sah-ws-4-call+js'
+      Authorization: 'X-Sah-Login'
+    body:
+      "service": "sah.Device.Information"
+      "method": "createContext"
+      "parameters":
+        "applicationName": "webui"
+        "username": "admin"
+        "password": "${password.value}"
+
+    onResponse: |-
+      //@code
+      ensemble.storage.set('contextId', response.body.data.contextID);
+      ensemble.storage.set('cookie', response.headers['set-cookie'].split(';')[0]);
+
+    onError: |-
+      //@code
+      error.text = 'r@kpn.login.error';
+
+
+  startPasswordRecovery:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "PasswordRecovery"
+      "method": "start"
+      "parameters": { }
+
+  startPasswordRecoveryEvents:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service" : "eventmanager"
+      "method" : "open_channel"
+      "parameters" :
+        "events" : [{"handler": "PasswordRecovery"}]
+
+    onResponse: |
+      //@code
+      ensemble.storage.eventChannel = response.body.status.channelid;
+
+  getPasswordRecoveryEvents:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "events": [{"handler": "PasswordRecovery"}]
+      "eventsVersionToUse": 1
+      "service": "eventmanager"
+      "method": "get_events"
+      "parameters":
+        "channelid": "${ensemble.storage.eventChannel}"
+        "events": [ ]
+
+
+  resetPassword:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NMC.GroupFunction"
+      "method": "ResetAdminPassword"
+      "parameters": ""
+    onResponse:
+      showDialog:
+        widget: PasswordResetDialogStep3
+        options:
+          minHeight: 340
+          maxWidth: 720
+
+  findSSW:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "NMC.Devices"
+      "method": "findSSW"
+      "parameters": {}
+    onResponse: |
+      if (response.body.status.length > 0) {
+        response.body.status.map(function(m) {
+          ensemble.invokeAPI("getSSWInfoErrors", {
+            "mac": m
+          });
+        });
+      } else {
+        ensemble.storage.extenderFaultFlag = false;
+      }
+      
+  getSSWInfo:
+    inputs: [mac]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "NMC.Devices"
+      "method": "getDevice"
+      "parameters": 
+        "macaddress": "${mac}"
+
+  getSSWInfoErrors:
+    inputs: [mac]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "NMC.Devices"
+      "method": "getDevice"
+      "parameters": 
+        "macaddress": "${mac}"
+    onResponse: |
+      if(response.body.status.Active != true || response.body.status.SSW.State != 'Synced')
+        ensemble.storage.extenderFaultFlag = true;
+      
+  # v12, sw2
+  getRootLEDs:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "LEDs"
+      "method": "getRootLEDs"
+      "parameters": ""
+
+  getV10Leds:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "LEDs.LED"
+      "method": "get"
+      "parameters": ""
+
+  getUserSettingsPreLogin:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "UserManagement.User.admin"
+      "method": "get"
+      "parameters": ""
+
+  getUserSettings:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "UserManagement.User.admin"
+      "method": "get"
+      "parameters": ""
+
+  changePassword:
+    inputs: [ currentPassword, password ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "UserManagement"
+      "method": "changePasswordSec"
+      "parameters":
+        "name": "admin"
+        "password": "${password}"
+        "old_password": "${currentPassword}"
+
+  startPing:
+    inputs: [ ipversion, hostname ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_startPing }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      service: IPPingDiagnostics
+      method: execDiagnostic
+      parameters: 
+        ipHost: ${hostname}
+        ProtocolVersion: ${ipversion}
+
+  runUpstreamSpeedTest:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    mockResponse:
+      body: ${ mock_runUpstreamSpeedTest }
+    body:
+      "service": "SpeedTest.Diagnostics.Upload"
+      "method": "runDiagnostics"
+      "parameters": ""
+
+  runDownstreamSpeedTest:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    mockResponse:
+      body: ${ mock_runDownstreamSpeedTest }
+    body:
+      "service": "SpeedTest.Diagnostics.Download"
+      "method": "runDiagnostics"
+      "parameters": ""
+
+  getRole:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "NMC.Role"
+      "method": "get"
+      "parameters": ""
+
+  getMqttClient:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+    body:
+      "service": "MQTT.Client.usp-client"
+      "method": "get"
+      "parameters": ""

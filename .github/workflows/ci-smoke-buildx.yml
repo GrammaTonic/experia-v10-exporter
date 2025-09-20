@@ -1,0 +1,83 @@
+name: CI Smoke Test - Buildx + cache
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  buildx-smoke:
+    name: Buildx build and verify metrics
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry (for pushes on main)
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build image with buildx (load or push on main)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          # Push to GHCR only when building on main. On other branches we load locally for the smoke test.
+          push: ${{ github.ref == 'refs/heads/main' }}
+          # Always tag the local image; also tag the GHCR image (push only on main)
+          tags: |
+            experia-buildx:latest
+            ghcr.io/grammantonic/experia-v10-exporter:latest
+          load: ${{ github.ref != 'refs/heads/main' }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
+
+      - name: Run exporter container
+        run: |
+          docker run -d --name experia-buildx -p 9100:9100 experia-buildx:latest
+
+      - name: Wait for /metrics to show wan discovery
+        env:
+          ATTEMPTS: 120
+        run: |
+          set -eo pipefail
+          for i in $(seq 1 "$ATTEMPTS"); do
+            if curl --retry 5 --retry-connrefused --retry-delay 1 -sS http://localhost:9100/metrics | grep -q '^experia_v10_wan_ifname'; then
+              echo "found experia_v10_wan_ifname"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Timed out waiting for experia_v10_wan_ifname"
+          docker logs experia-buildx || true
+          exit 1
+
+      - name: Remove container (success)
+        if: success()
+        run: docker rm -f experia-buildx || true
+
+      - name: Remove container (failure)
+        if: failure()
+        run: docker rm -f experia-buildx || true
