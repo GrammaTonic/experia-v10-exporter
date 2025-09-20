@@ -29,6 +29,15 @@ func Setup() (string, *collector.Experiav10Collector, error) {
 	password := os.Getenv("EXPERIA_V10_ROUTER_PASSWORD")
 
 	col := collector.NewCollector(ip, username, password, timeout)
+	// Attempt to login at startup so the collector reuses cookies and the
+	// session token for subsequent scrapes. Login is best-effort here; if it
+	// fails the collector will attempt to authenticate per-scrape as a
+	// fallback.
+	if err := col.Login(); err != nil {
+		// Do not fail startup on auth error; emit a log so operators can see the
+		// issue and the collector will retry during the first scrape.
+		log.Printf("warning: initial login failed: %v", err)
+	}
 	if err := prometheus.Register(col); err != nil {
 		return "", nil, fmt.Errorf("failed to register collector: %w", err)
 	}

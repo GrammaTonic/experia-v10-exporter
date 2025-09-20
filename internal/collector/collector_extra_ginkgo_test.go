@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -51,7 +52,7 @@ var _ = Describe("collector extra cases", func() {
 		c := NewCollector(net.ParseIP("192.0.2.21"), "u", "p", 1*time.Second)
 		c.client.Transport = rewriteTransport(ts.URL)
 
-		b, err := c.fetchURL("GET", "http://example/", map[string]string{"X-Test-Header": "1"}, nil)
+		b, err := c.fetchURL(context.Background(), "GET", "http://example/", map[string]string{"X-Test-Header": "1"}, nil)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(string(b)).To(Equal("ok"))
 	})

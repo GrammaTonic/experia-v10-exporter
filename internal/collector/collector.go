@@ -2,14 +2,18 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
+	"sync"
 
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +21,17 @@ import (
 )
 
 const metricPrefix = "experia_v10_"
+
+// defaultNetdevCandidates lists the uppercase interface identifiers used when
+// constructing NeMo service calls (NeMo.Intf.<IF>). These are requested as
+// uppercase (for example "ETH0") but exported Prometheus labels are stable
+// lowercase names derived from the candidate index (eth1, eth2...).
+//
+// The default set may be overridden at runtime using the
+// EXPERIA_EXPECT_NETDEV_IFACES environment variable. That variable should be a
+// comma-separated list of interface identifiers (for example: "eth0,eth1");
+// entries will be upper-cased before use in service payloads.
+var defaultNetdevCandidates = []string{"ETH0", "ETH1", "ETH2", "ETH3"}
 
 // apiUrl is provided via build-tag files (production in apiurl_prod.go and test override when running
 // tests with -tags test).
@@ -33,12 +48,22 @@ type Experiav10Collector struct {
 	upMetric           prometheus.Gauge
 	authErrorsMetric   prometheus.Counter
 	scrapeErrorsMetric prometheus.Counter
+	// netdevCandidates, when non-empty, overrides the package default list of
+	// interface candidates used to construct NeMo service calls. Values should
+	// be provided as uppercase identifiers (e.g. "ETH0"). The
+	// EXPERIA_EXPECT_NETDEV_IFACES environment variable still takes
+	// precedence at runtime for overriding candidates.
+	netdevCandidates []string
+	// session holds the active authentication context (token). It's set by
+	// Login() at startup and refreshed on-demand. Protect with a RWMutex.
+	session   sessionContext
+	sessionMu sync.RWMutex
 }
 
-func NewCollector(ip net.IP, username, password string, timeout time.Duration) *Experiav10Collector {
+func NewCollector(ip net.IP, username, password string, timeout time.Duration, candidates ...string) *Experiav10Collector {
 	cookieJar, _ := cookiejar.New(nil)
 
-	return &Experiav10Collector{
+	c := &Experiav10Collector{
 		ip:       ip,
 		username: username,
 		password: password,
@@ -59,27 +84,69 @@ func NewCollector(ip net.IP, username, password string, timeout time.Duration) *
 			Help: "Counts the number of scrape errors by this collector.",
 		}),
 	}
+
+	// If explicit candidates passed, normalize and store them on the collector.
+	if len(candidates) > 0 {
+		list := make([]string, 0, len(candidates))
+		for _, p := range candidates {
+			if p == "" {
+				continue
+			}
+			list = append(list, strings.ToUpper(strings.TrimSpace(p)))
+		}
+		c.netdevCandidates = list
+	}
+
+	return c
+}
+
+// Login performs authentication and stores the session token on the collector.
+// This is intended to be called once at startup so subsequent scrapes use the
+// established session (cookies + token headers). It returns an error if
+// authentication fails.
+func (c *Experiav10Collector) Login() error {
+	sess, err := c.authenticate()
+	if err != nil {
+		return err
+	}
+	c.sessionMu.Lock()
+	c.session = sess
+	c.sessionMu.Unlock()
+	return nil
 }
 
 func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
-	ctx, err := c.authenticate()
-	if err != nil {
-		c.authErrorsMetric.Inc()
-		c.upMetric.Set(0)
-		c.upMetric.Collect(ch)
-		c.authErrorsMetric.Collect(ch)
-		c.scrapeErrorsMetric.Collect(ch)
-		// Even when authentication fails, emit a placeholder internet_connection
-		// metric so that registry.Gather() returns the metric family. This keeps
-		// the behavior consistent for tests and scrapers that expect the family
-		// to always be present.
-		ch <- prometheus.MustNewConstMetric(
-			ifupTime,
-			prometheus.GaugeValue,
-			0.0,
-			"", "", "Unknown", "", "",
-		)
-		return
+	// Use the pre-established session if available. If there is no session
+	// (empty token) attempt to authenticate on-demand; this provides a
+	// fallback for tests or runs where Login() was not invoked.
+	c.sessionMu.RLock()
+	sess := c.session
+	c.sessionMu.RUnlock()
+	if sess.Token == "" {
+		// Try to establish a session for this scrape
+		newSess, err := c.authenticate()
+		if err != nil {
+			c.authErrorsMetric.Inc()
+			c.upMetric.Set(0)
+			c.upMetric.Collect(ch)
+			c.authErrorsMetric.Collect(ch)
+			c.scrapeErrorsMetric.Collect(ch)
+			// Even when authentication fails, emit a placeholder internet_connection
+			// metric so that registry.Gather() returns the metric family. This keeps
+			// the behavior consistent for tests and scrapers that expect the family
+			// to always be present.
+			ch <- prometheus.MustNewConstMetric(
+				ifupTime,
+				prometheus.GaugeValue,
+				0.0,
+				"", "", "Unknown", "", "",
+			)
+			return
+		}
+		c.sessionMu.Lock()
+		c.session = newSess
+		c.sessionMu.Unlock()
+		sess = newSess
 	}
 
 	// whether we're running E2E/debug mode
@@ -90,21 +157,35 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	// Helper for POST fetches, returns response as string
+	// Helper for POST fetches, returns response as string. Always re-read the
+	// collector's stored session under the mutex so that Login() performed at
+	// startup is respected by subsequent scrapes.
 	postFetch := func(body string) string {
 		url := fmt.Sprintf(apiUrl, c.ip.String())
+
+		// Read the (possibly updated) session token under a read lock.
+		c.sessionMu.RLock()
+		token := c.session.Token
+		c.sessionMu.RUnlock()
+
 		headers := map[string]string{
 			"accept":          "*/*",
 			"accept-language": "en-US,en;q=0.7",
 			"content-type":    "application/x-sah-ws-4-call+json",
 			"sec-gpc":         "1",
-			"Authorization":   "X-Sah " + ctx.Token,
-			"x-context":       ctx.Token,
+			"Authorization":   "X-Sah " + token,
+			"x-context":       token,
 			// Add browser-matching headers for POSTs
 			"Origin":  "http://192.168.2.254",
 			"Referer": "http://192.168.2.254/",
 		}
-		resp, err := c.fetchURL("POST", url, headers, []byte(body))
+
+		// Per-request context with the client's configured timeout so a
+		// single slow request does not block indefinitely.
+		reqCtx, cancel := context.WithTimeout(context.Background(), c.client.Timeout)
+		defer cancel()
+
+		resp, err := c.fetchURL(reqCtx, "POST", url, headers, []byte(body))
 		if err != nil {
 			log.Printf("ERROR: failed to fetch %s: %v", body, err)
 			c.scrapeErrorsMetric.Inc()
@@ -186,8 +267,17 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	// expected Linux-like names.
 
 	// Candidate interfaces (uppercase for service name); allow override via
-	// EXPERIA_EXPECT_NETDEV_IFACES (comma-separated, will be upper-cased here).
-	candidates := []string{"ETH0", "ETH1", "ETH2", "ETH3"}
+	// EXPERIA_EXPECT_NETDEV_IFACES (comma-separated). By default we use the
+	// collector's configured netdevCandidates (if provided) otherwise the
+	// package-level defaultNetdevCandidates.
+	var candidates []string
+	if len(c.netdevCandidates) > 0 {
+		candidates = make([]string, len(c.netdevCandidates))
+		copy(candidates, c.netdevCandidates)
+	} else {
+		candidates = make([]string, len(defaultNetdevCandidates))
+		copy(candidates, defaultNetdevCandidates)
+	}
 	if env := os.Getenv("EXPERIA_EXPECT_NETDEV_IFACES"); env != "" {
 		candidates = nil
 		for _, p := range strings.Split(env, ",") {
@@ -198,29 +288,17 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	// sanitizeKey trims surrounding whitespace, quotes and backslashes and
-	// lowercases the key so we can use a single normalized form everywhere.
-	sanitizeKey := func(s string) string {
-		if s == "" {
-			return ""
-		}
-		// Trim spaces then remove surrounding quote and backslash characters.
-		t := strings.TrimSpace(s)
-		// Remove surrounding quote or backslash characters (both ends).
-		trimChar := func(r byte) bool {
-			return r == '"' || r == '\\' || r == '\''
-		}
-		for len(t) > 0 && trimChar(t[0]) {
-			t = t[1:]
-		}
-		for len(t) > 0 && trimChar(t[len(t)-1]) {
-			t = t[:len(t)-1]
-		}
-		return strings.ToLower(t)
-	}
+	// ...existing code...
 
 	// Process each candidate immediately and emit metrics per-interface.
-	for _, cand := range candidates {
+	// We no longer try to match names returned by the device. Instead we
+	// perform the requests for "ETH0","ETH1","ETH2","ETH3" and
+	// unconditionally expose metrics with labels "eth1","eth2","eth3",
+	// "eth4" based on the candidate index (1-based). This removes any
+	// name-mapping logic and keeps label naming stable across firmware.
+	for idx, cand := range candidates {
+		// canonical label: eth1..ethN (1-based)
+		labelName := fmt.Sprintf("eth%d", idx+1)
 		body := fmt.Sprintf(`{"service":"NeMo.Intf.%s","method":"getMIBs","parameters":{}}`, cand)
 		resp := postFetch(body)
 		debugLog("DEBUG: getMIBs service=%s response length=%d", cand, len(resp))
@@ -228,14 +306,14 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		debugLog("DEBUG RAW getMIBs service=%s: %s", cand, resp)
 		if resp == "" {
 			// still emit a zeroed metric so that collectors see the family when
-			// the device doesn't return useful data for a candidate.
-			canon := sanitizeKey(cand)
-			ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, 0.0, canon)
-			ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, 0.0, canon)
-			ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, 0.0, canon)
-			ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, 0.0, canon)
-			ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, 0.0, canon)
-			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, canon, "", "", "", "")
+			// the device doesn't return useful data for a candidate. Use the
+			// stable labelName (eth1..ethN) instead of device-provided names.
+			ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
 		}
 		var g map[string]any
@@ -286,25 +364,21 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		}
 
 		// Merge base and netdev entries into a single inner map for this
-		// candidate. We try to find a matching inner map by name and fall back
-		// to using the candidate name as the canonical label.
+		// candidate. We no longer attempt to match by name; instead pick the
+		// first available entry from `base` or `netdev` if present. This makes
+		// labeling deterministic (we always use labelName) and avoids relying
+		// on device-provided names.
 		var innerMap map[string]any
+		// Prefer an entry whose key matches the requested candidate (e.g. "ETH0"
+		// or lowercased). This makes selection deterministic across map
+		// iteration orders and ensures metrics like TxQueueLen are read from
+		// the expected entry for the candidate when present.
 		if b, ok := s["base"].(map[string]any); ok {
-			// Try finding an inner map that matches candidate
-			for _, v := range b {
-				if im, ok := v.(map[string]any); ok {
-					if n, ok := im["Name"].(string); ok && sanitizeKey(n) == sanitizeKey(cand) {
-						innerMap = im
-						break
-					}
-					if n, ok := im["NetDevName"].(string); ok && sanitizeKey(n) == sanitizeKey(cand) {
-						innerMap = im
-						break
-					}
-				}
-			}
-			// if not found, and there is only a single entry, pick it
-			if innerMap == nil && len(b) == 1 {
+			if im, ok := b[cand].(map[string]any); ok {
+				innerMap = im
+			} else if im, ok := b[strings.ToLower(cand)].(map[string]any); ok {
+				innerMap = im
+			} else {
 				for _, v := range b {
 					if im, ok := v.(map[string]any); ok {
 						innerMap = im
@@ -315,19 +389,11 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		}
 		if innerMap == nil {
 			if nd, ok := s["netdev"].(map[string]any); ok {
-				for _, v := range nd {
-					if im, ok := v.(map[string]any); ok {
-						if n, ok := im["NetDevIfName"].(string); ok && sanitizeKey(n) == sanitizeKey(cand) {
-							innerMap = im
-							break
-						}
-						if n, ok := im["NetDevName"].(string); ok && sanitizeKey(n) == sanitizeKey(cand) {
-							innerMap = im
-							break
-						}
-					}
-				}
-				if innerMap == nil && len(nd) == 1 {
+				if im, ok := nd[cand].(map[string]any); ok {
+					innerMap = im
+				} else if im, ok := nd[strings.ToLower(cand)].(map[string]any); ok {
+					innerMap = im
+				} else {
 					for _, v := range nd {
 						if im, ok := v.(map[string]any); ok {
 							innerMap = im
@@ -338,59 +404,33 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 
-		// Build a normalized key/value map from innerMap for easy lookups.
-		norm := map[string]any{}
-		for k, v := range innerMap {
-			norm[strings.ToLower(k)] = v
-		}
-
-		// If there is a netdev section, try to find a matching netdev entry
-		// that corresponds to this candidate/innerMap and merge its fields
-		// (prefer netdev values for MTU/Tx, etc.). This handles firmware
-		// that splits base and netdev data across sections.
+		// If there is a netdev section, capture the first netdev entry so we
+		// can merge its fields (prefer netdev values for MTU/Tx and similar
+		// fields). We don't attempt to match names here.
+		var ndFirst map[string]any
 		if nd, ok := s["netdev"].(map[string]any); ok {
-			// build a set of possible names to match against
-			names := map[string]struct{}{}
-			names[sanitizeKey(cand)] = struct{}{}
-			if innerMap != nil {
-				if n, ok := innerMap["Name"].(string); ok && n != "" {
-					names[sanitizeKey(n)] = struct{}{}
-				}
-				if n, ok := innerMap["NetDevName"].(string); ok && n != "" {
-					names[sanitizeKey(n)] = struct{}{}
-				}
-				if n, ok := innerMap["NetDevIfName"].(string); ok && n != "" {
-					names[sanitizeKey(n)] = struct{}{}
-				}
-			}
-
-			// find a matching netdev entry
-			for _, v := range nd {
-				if im, ok := v.(map[string]any); ok {
-					var candidate string
-					if n, ok := im["NetDevIfName"].(string); ok && n != "" {
-						candidate = sanitizeKey(n)
-					} else if n, ok := im["NetDevName"].(string); ok && n != "" {
-						candidate = sanitizeKey(n)
-					} else if n, ok := im["Name"].(string); ok && n != "" {
-						candidate = sanitizeKey(n)
-					}
-					if candidate == "" {
-						continue
-					}
-					if _, found := names[candidate]; found {
-						// merge netdev fields, prefer netdev values by overriding
-						for k, vv := range im {
-							norm[strings.ToLower(k)] = vv
-						}
-						// also ensure innerMap is set so later code can inspect it
-						if innerMap == nil {
-							innerMap = im
-						}
+			if im, ok := nd[cand].(map[string]any); ok {
+				ndFirst = im
+			} else if im, ok := nd[strings.ToLower(cand)].(map[string]any); ok {
+				ndFirst = im
+			} else {
+				for _, v := range nd {
+					if im, ok := v.(map[string]any); ok {
+						ndFirst = im
 						break
 					}
 				}
 			}
+		}
+
+		// Build a normalized key/value map from innerMap and ndFirst for easy lookups.
+		// Prefers netdev (ndFirst) values when present.
+		norm := map[string]any{}
+		for k, v := range innerMap {
+			norm[strings.ToLower(k)] = v
+		}
+		for k, vv := range ndFirst {
+			norm[strings.ToLower(k)] = vv
 		}
 
 		// Helper extractors
@@ -471,25 +511,228 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 
-		// Determine canonical interface name to use as label
-		canon := sanitizeKey(cand)
-		if innerMap != nil {
-			if n, ok := innerMap["NetDevIfName"].(string); ok && n != "" {
-				canon = sanitizeKey(n)
-			} else if n, ok := innerMap["Name"].(string); ok && n != "" {
-				canon = sanitizeKey(n)
-			} else if n, ok := innerMap["NetDevName"].(string); ok && n != "" {
-				canon = sanitizeKey(n)
+		// Emit metrics using the stable labelName (eth1..ethN).
+		debugLog("EMIT netdev ifname=%s mtu=%v tx=%v up=%v", labelName, mtu, tx, state)
+		ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, state, labelName)
+		ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, mtu, labelName)
+		ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, tx, labelName)
+		ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, speed, labelName)
+		ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, lct, labelName)
+		ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+
+		// Also fetch per-interface statistics via getNetDevStats and export them.
+		// This mirrors the device API call:
+		// {"service":"NeMo.Intf.ETH0","method":"getNetDevStats","parameters":{}}
+		statsBody := fmt.Sprintf(`{"service":"NeMo.Intf.%s","method":"getNetDevStats","parameters":{}}`, cand)
+		statsResp := postFetch(statsBody)
+		debugLog("DEBUG: getNetDevStats service=%s response length=%d", cand, len(statsResp))
+		debugLog("DEBUG RAW getNetDevStats service=%s: %s", cand, statsResp)
+		if statsResp == "" {
+			// Emit zeroed stats so metric families are present even when the
+			// device doesn't return data for this candidate.
+			ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
+			continue
+		}
+		var sg map[string]any
+		if err := json.Unmarshal([]byte(statsResp), &sg); err == nil {
+			// Prefer data map when present
+			var data map[string]any
+			if d, ok := sg["data"].(map[string]any); ok {
+				data = d
+			} else if top, ok := sg["status"].(map[string]any); ok {
+				data = top
+			} else {
+				// try the top-level map itself
+				data = sg
+			}
+
+			getNum := func(k string) (float64, bool) {
+				if data == nil {
+					return 0, false
+				}
+				if v, ok := data[k]; ok {
+					switch vv := v.(type) {
+					case float64:
+						return vv, true
+					case int:
+						return float64(vv), true
+					case string:
+						if vv == "" {
+							return 0, false
+						}
+						if f, err := strconv.ParseFloat(vv, 64); err == nil {
+							return f, true
+						}
+					}
+				}
+				// try lower-cased keys as some firmwares use different casing
+				if v, ok := data[strings.ToLower(k)]; ok {
+					switch vv := v.(type) {
+					case float64:
+						return vv, true
+					case int:
+						return float64(vv), true
+					case string:
+						if vv == "" {
+							return 0, false
+						}
+						if f, err := strconv.ParseFloat(vv, 64); err == nil {
+							return f, true
+						}
+					}
+				}
+				return 0, false
+			}
+
+			// Emit metrics if present, otherwise zero values to keep families present.
+			if v, ok := getNum("RxPackets"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxPackets"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxBytes"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxBytes"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxDropped"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxDropped"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("Multicast"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("Collisions"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxLengthErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxOverErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxCrcErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxFrameErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxFifoErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("RxMissedErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxAbortedErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxCarrierErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxFifoErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxHeartbeatErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
+			}
+			if v, ok := getNum("TxWindowErrors"); ok {
+				ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, v, labelName)
+			} else {
+				ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 		}
-
-		debugLog("EMIT netdev ifname=%s mtu=%v tx=%v up=%v", canon, mtu, tx, state)
-		ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, state, canon)
-		ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, mtu, canon)
-		ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, tx, canon)
-		ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, speed, canon)
-		ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, lct, canon)
-		ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, canon, alias, flags, lladdr, dtype)
 	}
 
+}
+
+// CookiesForHost returns the cookies stored in the client's jar for the
+// provided host URL (for example "http://192.168.2.254"). It returns an
+// empty slice if there are no cookies or the URL cannot be parsed.
+func (c *Experiav10Collector) CookiesForHost(hostURL string) []*http.Cookie {
+	if c == nil || c.client == nil || c.client.Jar == nil {
+		return nil
+	}
+	u, err := url.Parse(hostURL)
+	if err != nil {
+		return nil
+	}
+	return c.client.Jar.Cookies(u)
+}
+
+// SessionToken returns the currently stored session token (contextID). It
+// acquires the read lock while reading the value.
+func (c *Experiav10Collector) SessionToken() string {
+	c.sessionMu.RLock()
+	defer c.sessionMu.RUnlock()
+	return c.session.Token
 }
