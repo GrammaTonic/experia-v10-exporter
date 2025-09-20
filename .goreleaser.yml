@@ -31,6 +31,10 @@ snapshot:
 dockers:
   - image_templates:
       - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
+    use: buildx
+    platforms:
+      - linux/amd64
+      - linux/arm64
 
 release:
   github:
