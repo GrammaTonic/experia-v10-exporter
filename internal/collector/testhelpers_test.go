@@ -1,11 +1,12 @@
 package collector
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // roundTripperFunc is a small helper to stub HTTP responses in tests.
