@@ -112,10 +112,7 @@ func TestFetchURLErrors(t *testing.T) {
 	}
 }
 
-type errReadCloser struct{}
-
-func (e *errReadCloser) Read(b []byte) (int, error) { return 0, &simpleErr{"read error"} }
-func (e *errReadCloser) Close() error               { return nil }
+// errReadCloser provided by testhelpers_test.go
 
 func TestAuthenticateDoAndReadErrors(t *testing.T) {
 	// client.Do returns error

@@ -12,8 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// sampleMibJSON is a compacted version of the user's provided JSON for MIBs.
-const sampleMibJSON = `{"status":true,"data":{"status":{"base":{"ETH2":{"Name":"ETH2","Enable":true,"Status":true,"Flags":"enabled netdev vlan","LLAddress":"88:D2:74:AB:05:D0","TxQueueLen":0,"MTU":1500,"NetDevState":"up","CurrentBitRate":1000,"LastChangeTime":75},"eth3":{"Name":"eth3","Enable":true,"Status":true,"Flags":"up broadcast multicast","LLAddress":"88:D2:74:AB:05:D0","TxQueueLen":1000,"MTU":1500,"NetDevState":"up","CurrentBitRate":1000,"LastChangeTime":73}},"alias":{"ETH2":{"Alias":"cpe-ETH2"},"eth3":{"Alias":"cpe-eth3"}},"netdev":{},"eth":{"eth3":{"LastChangeTime":73,"CurrentBitRate":1000}}}}}`
+// use sampleMibJSON from testhelpers_test.go
 
 func TestCollect_ParsesMIBsAndEmitsNetdevMetrics(t *testing.T) {
 	// Create collector and override client transport to return sampleMibJSON

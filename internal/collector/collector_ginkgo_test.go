@@ -203,39 +203,4 @@ var _ = Describe("Experia Collector", func() {
 // ...existing code...
 
 // rewriteTransport rewrites all requests to the baseURL while preserving the method and headers/body.
-func rewriteTransport(baseURL string) http.RoundTripper {
-	return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		// Build new request to test server
-		newReq, err := http.NewRequest(req.Method, baseURL, req.Body)
-		if err != nil {
-			return nil, err
-		}
-		newReq.Header = req.Header.Clone()
-		// Use default transport
-		return http.DefaultTransport.RoundTrip(newReq)
-	})
-}
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-// readCounterValue reads the current value of a prometheus.Counter (via its Desc/Collect path)
-func readCounterValue(c prometheus.Counter) float64 {
-	ch := make(chan prometheus.Metric, 1)
-	go func() {
-		c.Collect(ch)
-		close(ch)
-	}()
-	for m := range ch {
-		pm := &dto.Metric{}
-		if err := m.Write(pm); err == nil {
-			if pm.Counter != nil {
-				return pm.Counter.GetValue()
-			}
-		}
-	}
-	return 0
-}
-
-func fmtError(s string) error { return &simpleErr{s} }
+// helper functions are provided by testhelpers_test.go

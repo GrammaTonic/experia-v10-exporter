@@ -12,16 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// sampleStatsFmt is a template for a getNetDevStats response where numeric
-// fields are provided so tests can assert emitted metric values.
-const sampleStatsFmt = `{"status":true,"data":{` +
-	`"RxPackets":%d,"TxPackets":%d,"RxBytes":%d,"TxBytes":%d,` +
-	`"RxErrors":%d,"TxErrors":%d,"RxDropped":%d,"TxDropped":%d,` +
-	`"Multicast":%d,"Collisions":%d,` +
-	`"RxLengthErrors":%d,"RxOverErrors":%d,"RxCrcErrors":%d,` +
-	`"RxFrameErrors":%d,"RxFifoErrors":%d,"RxMissedErrors":%d,` +
-	`"TxAbortedErrors":%d,"TxCarrierErrors":%d,"TxFifoErrors":%d,` +
-	`"TxHeartbeatErrors":%d,"TxWindowErrors":%d}}`
+// sampleStatsFmt provided by testhelpers_test.go
 
 func TestCollect_ParsesGetNetDevStats(t *testing.T) {
 	// Create collector and override client transport to return canned responses
