@@ -72,3 +72,43 @@ jobs:
           tags: |
             ghcr.io/${{ steps.image.outputs.image }}:ci
             ghcr.io/${{ steps.image.outputs.image }}:latest
+
+    trivy-scan:
+      name: Trivy scan (filesystem + image)
+      runs-on: ubuntu-latest
+      needs: test
+      steps:
+        - uses: actions/checkout@v5
+
+        - name: Set image name for scan
+          run: |
+            owner=$(echo "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
+            repo=$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]')
+            echo "IMAGE=ghcr.io/${owner}/${repo}:trivy-scan" >> "$GITHUB_ENV"
+
+        - name: Build docker image for scanning
+          run: |
+            echo "Building $IMAGE"
+            docker build -t "$IMAGE" -f docker/Dockerfile . || true
+
+        - name: Trivy scan filesystem
+          uses: aquasecurity/trivy-action@0.33.1
+          with:
+            scan-type: fs
+            format: json
+            output: trivy-filesystem.json
+
+        - name: Trivy scan image
+          uses: aquasecurity/trivy-action@0.33.1
+          with:
+            image-ref: ${{ env.IMAGE }}
+            format: json
+            output: trivy-image.json
+
+        - name: Upload Trivy results
+          uses: actions/upload-artifact@v4
+          with:
+            name: trivy-results
+            path: |
+              trivy-filesystem.json
+              trivy-image.json
