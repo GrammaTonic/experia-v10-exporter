@@ -1,4 +1,4 @@
-format: 2
+version: 2
 
 project_name: experia-v10-exporter
 
@@ -12,12 +12,14 @@ builds:
     ldflags: ['-s -w']
 
 archives:
-  - id: default
+  - builds:
+      - experia-v10-exporter
     formats: [tar.gz]
-    files: [README.md]
+    files:
+      - README.md
     format_overrides:
       - goos: windows
-        formats: [zip]
+        format: zip
 
 changelog:
   use: git
@@ -42,4 +44,4 @@ release:
 archive:
   format_overrides:
     - goos: windows
-      format: zip
+      formats: [zip]
