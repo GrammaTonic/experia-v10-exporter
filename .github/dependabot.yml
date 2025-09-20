@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Allow dependabot to rebase PRs automatically when necessary
+    rebase-strategy: "auto"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
@@ -12,10 +14,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
     open-pull-requests-limit: 5
 
   - package-ecosystem: "docker"
     directory: "/docker"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
     open-pull-requests-limit: 5
