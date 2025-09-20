@@ -1,0 +1,34 @@
+services:
+  experia-v10-exporter:
+    image: ghcr.io/grammatonic/experia-v10-exporter:latest
+    env_file:
+      - ../.env
+    environment:
+      # Allow overriding the listen port, but default to 9684 for production
+      - EXPERIA_V10_LISTEN_ADDR=${EXPERIA_V10_LISTEN_ADDR:-:9684}
+      # Compose does not support shell parameter expansion like ${VAR#*:}.
+      # Provide an explicit port variable with a sane default and let users
+      # override either EXPERIA_V10_LISTEN_ADDR or EXPERIA_V10_LISTEN_PORT.
+      - EXPERIA_V10_LISTEN_PORT=${EXPERIA_V10_LISTEN_PORT:-9684}
+      - EXPERIA_V10_TIMEOUT=${EXPERIA_V10_TIMEOUT:-10s}
+      - EXPERIA_V10_ROUTER_IP=${EXPERIA_V10_ROUTER_IP}
+      - EXPERIA_V10_ROUTER_USERNAME=${EXPERIA_V10_ROUTER_USERNAME}
+      - EXPERIA_V10_ROUTER_PASSWORD=${EXPERIA_V10_ROUTER_PASSWORD}
+      - EXPERIA_EXPECT_NETDEV_IFACES=${EXPERIA_EXPECT_NETDEV_IFACES}
+    ports:
+      # Map the explicit listen port to the host. If users set
+      # EXPERIA_V10_LISTEN_ADDR instead, they should also set
+      # EXPERIA_V10_LISTEN_PORT to keep these in sync.
+      - "${EXPERIA_V10_LISTEN_PORT}:${EXPERIA_V10_LISTEN_PORT}"
+    restart: unless-stopped
+    healthcheck:
+      # Use the explicit listen port for the healthcheck URL.
+      test: ["CMD", "/probe", "-url", "http://localhost:${EXPERIA_V10_LISTEN_PORT}/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
