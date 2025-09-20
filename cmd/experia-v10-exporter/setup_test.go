@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestSetup_WithEnv(t *testing.T) {
@@ -25,5 +27,5 @@ func TestSetup_WithEnv(t *testing.T) {
 		t.Fatalf("expected collector instance")
 	}
 	// unregister to avoid global state in other tests
-	_ = collector
+	prometheus.Unregister(col)
 }
