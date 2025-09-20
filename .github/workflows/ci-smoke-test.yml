@@ -51,6 +51,25 @@ jobs:
           # fail the job
           exit 1
 
+      - name: Assert /metrics contains wan discovery
+        if: success()
+        env:
+          CURL_RETRIES: 5
+        run: |
+          set -eo pipefail
+          # After the container is healthy, scrape /metrics to assert the
+          # discovery metric is present. Use curl with retries to tolerate
+          # minor transient errors.
+          if curl --retry ${CURL_RETRIES} --retry-connrefused --retry-delay 1 -sS http://localhost:9100/metrics | grep -q '^experia_v10_wan_ifname'; then
+            echo "found experia_v10_wan_ifname"
+            exit 0
+          fi
+          echo "experia_v10_wan_ifname not found after container reported healthy"
+          echo "Container logs:"
+          docker logs experia-smoke || true
+          # fail the job
+          exit 1
+
       - name: Stop and remove container (success)
         if: success()
         run: docker rm -f experia-smoke || true
