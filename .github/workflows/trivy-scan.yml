@@ -25,14 +25,14 @@ jobs:
           docker build -t ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:trivy-scan -f docker/Dockerfile . || true
 
       - name: Trivy scan filesystem
-        uses: aquasecurity/trivy-action@v1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: fs
           format: json
           output: trivy-filesystem.json
 
       - name: Trivy scan image
-        uses: aquasecurity/trivy-action@v1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:trivy-scan
           format: json
