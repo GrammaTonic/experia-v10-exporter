@@ -43,3 +43,8 @@ COPY --from=builder /etc/passwd /etc/passwd
 USER nobody
 
 ENTRYPOINT [ "/experia-v10-exporter" ]
+
+# Healthcheck: ensure /metrics is reachable. Use a short timeout so Docker can mark
+# the container unhealthy if the app fails to respond quickly. This helps orchestrators
+# detect failed containers during startup/restart loops.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 CMD ["/bin/sh","-c","/usr/bin/curl -sS --max-time 2 http://127.0.0.1:9100/metrics >/dev/null 2>&1 || exit 1"]
