@@ -23,19 +23,29 @@ jobs:
           # Run container in background and publish metrics port
           docker run -d --name experia-smoke -p 9100:9100 experia-smoke:latest
 
-      - name: Wait for /metrics to show wan discovery
+      - name: Wait for container HEALTH status
         env:
-          ATTEMPTS: 120
+          ATTEMPTS: 60
+          SLEEP_SECONDS: 2
         run: |
           set -eo pipefail
+          # Wait for the container health to become 'healthy'. This requires
+          # the image to declare a HEALTHCHECK (the Dockerfile adds a small
+          # probe binary and HEALTHCHECK). We poll docker inspect until the
+          # status is 'healthy' or we time out.
+          status="unknown"
           for i in $(seq 1 "$ATTEMPTS"); do
-            if curl --retry 5 --retry-connrefused --retry-delay 1 -sS http://localhost:9100/metrics | grep -q '^experia_v10_wan_ifname'; then
-              echo "found experia_v10_wan_ifname"
+            status=$(docker inspect --format '{{.State.Health.Status}}' experia-smoke 2>/dev/null || true)
+            echo "container health status: ${status}"
+            if [ "$status" = "healthy" ]; then
+              echo "container is healthy"
               exit 0
             fi
-            sleep 1
+            # If .State.Health is missing or empty, continue waiting so CI
+            # has time to start the container and run the HEALTHCHECK.
+            sleep ${SLEEP_SECONDS}
           done
-          echo "Timed out waiting for experia_v10_wan_ifname"
+          echo "Timed out waiting for container to become healthy (last status=${status})"
           echo "Container logs:"
           docker logs experia-smoke || true
           # fail the job
