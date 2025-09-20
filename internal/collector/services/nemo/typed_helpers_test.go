@@ -1,16 +1,39 @@
-package nemo_test
+package nemo
 
 import (
 	"fmt"
 	"testing"
 
-	nemo "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nemo"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 )
 
+func TestAnyToFloatAndReaders(t *testing.T) {
+	// numeric string
+	if f, ok := anyToFloat("123.5"); !ok || f != 123.5 {
+		t.Fatalf("anyToFloat failed for string")
+	}
+	// int
+	if f, ok := anyToFloat(10); !ok || f != 10.0 {
+		t.Fatalf("anyToFloat failed for int")
+	}
+}
+
+func TestReadFloatAndString(t *testing.T) {
+	norm := map[string]any{"alias": "foo", "mtu": 1500, "currentbitrate": "1000"}
+	if s, ok := readString(norm, "alias"); !ok || s != "foo" {
+		t.Fatalf("readString failed: %v %v", s, ok)
+	}
+	if f, ok := readFloat(norm, "mtu"); !ok || f != 1500 {
+		t.Fatalf("readFloat failed: %v %v", f, ok)
+	}
+	if f, ok := readFloat(norm, "currentbitrate"); !ok || f != 1000 {
+		t.Fatalf("readFloat failed for string numeric: %v %v", f, ok)
+	}
+}
+
 func TestGetMIBsTyped_Sample(t *testing.T) {
 	b := []byte(testutil.SampleMibJSON)
-	mi, s, err := nemo.GetMIBsTyped(b, "ETH2")
+	mi, s, err := GetMIBsTyped(b, "ETH2")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,7 +73,7 @@ func TestGetNetDevStatsTyped_Sample(t *testing.T) {
 		14, 15, 16,
 		17, 18, 19, 20, 21,
 	)
-	ns, err := nemo.GetNetDevStatsTyped([]byte(resp))
+	ns, err := GetNetDevStatsTyped([]byte(resp))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
