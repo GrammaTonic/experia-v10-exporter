@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -63,7 +64,7 @@ var _ = Describe("Experia Collector", func() {
 		var found bool
 		for m := range ch {
 			desc := m.Desc().String()
-			if strings.Contains(desc, "internet_connection") || desc == ifupTime.String() {
+			if strings.Contains(desc, "internet_connection") || desc == metrics.IfupTime.String() {
 				// convert to dto and inspect value
 				pm := &dto.Metric{}
 				Expect(m.Write(pm)).To(Succeed())
@@ -136,7 +137,7 @@ var _ = Describe("Experia Collector", func() {
 					for range ch {
 					}
 					// read via helper
-					after := testutil.ReadCounterValue(permissionErrors)
+					after := testutil.ReadCounterValue(metrics.PermissionErrors)
 					Expect(after).To(BeNumerically(
 						">=", 1.0))
 				},

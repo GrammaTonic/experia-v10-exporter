@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -70,7 +71,7 @@ func TestE2E(t *testing.T) {
 	}
 
 	// Look for the internet_connection metric family and assert expected connection_state.
-	famName := metricPrefix + "internet_connection"
+	famName := metrics.MetricPrefix + "internet_connection"
 	var found bool
 	var foundStates []string
 	for _, mf := range res.mfs {
@@ -123,7 +124,7 @@ func TestE2E(t *testing.T) {
 	}
 
 	// Look for netdev_up and collect ifnames (uppercase) -> values
-	netdevName := metricPrefix + "netdev_up"
+	netdevName := metrics.MetricPrefix + "netdev_up"
 	netdevFound := false
 	netdevIfs := map[string]float64{}
 	for _, mf := range res.mfs {

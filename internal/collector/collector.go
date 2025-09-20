@@ -18,13 +18,14 @@ import (
 	"strings"
 	"time"
 
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	parsernemo "github.com/GrammaTonic/experia-v10-exporter/internal/collector/parser/nemo"
 	nemo "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nemo"
 	nmc "github.com/GrammaTonic/experia-v10-exporter/internal/collector/services/nmc"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const metricPrefix = "experia_v10_"
+// metricPrefix moved to internal/collector/metrics as MetricPrefix
 
 // defaultNetdevCandidates lists the uppercase interface identifiers used when
 // constructing NeMo service calls (NeMo.Intf.<IF>). These are requested as
@@ -71,15 +72,15 @@ func NewCollector(ip net.IP, username, password string, timeout time.Duration, c
 		password: password,
 		client:   connectivity.NewHTTPClient(timeout),
 		upMetric: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: metricPrefix + "up",
+			Name: metrics.MetricPrefix + "up",
 			Help: "Shows if the Experia Box V10 is deemed up by the collector.",
 		}),
 		authErrorsMetric: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: metricPrefix + "auth_errors_total",
+			Name: metrics.MetricPrefix + "auth_errors_total",
 			Help: "Counts number of authentication errors encountered by the collector.",
 		}),
 		scrapeErrorsMetric: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: metricPrefix + "scrape_errors_total",
+			Name: metrics.MetricPrefix + "scrape_errors_total",
 			Help: "Counts the number of scrape errors by this collector.",
 		}),
 	}
@@ -137,7 +138,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			// the behavior consistent for tests and scrapers that expect the family
 			// to always be present.
 			ch <- prometheus.MustNewConstMetric(
-				ifupTime,
+				metrics.IfupTime,
 				prometheus.GaugeValue,
 				0.0,
 				"", "", "Unknown", "", "",
@@ -224,7 +225,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			if len(wanStatus.Errors) > 0 {
 				for _, e := range wanStatus.Errors {
 					if e.Description == "Permission denied" {
-						permissionErrors.Inc()
+						metrics.PermissionErrors.Inc()
 					}
 				}
 			}
@@ -238,7 +239,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 				connState = "Unknown"
 			}
 			ch <- prometheus.MustNewConstMetric(
-				ifupTime,
+				metrics.IfupTime,
 				prometheus.GaugeValue,
 				val,
 				wanStatus.Data.LinkType,
@@ -255,7 +256,7 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 	// metric family is always present for Gather() consumers (tests, scrapers).
 	if !emittedWAN {
 		ch <- prometheus.MustNewConstMetric(
-			ifupTime,
+			metrics.IfupTime,
 			prometheus.GaugeValue,
 			0.0,
 			"", "", "Unknown", "", "",
@@ -309,12 +310,12 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 			// still emit a zeroed metric so that collectors see the family when
 			// the device doesn't return useful data for a candidate. Use the
 			// stable labelName (eth1..ethN) instead of device-provided names.
-			ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMtu, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
 		}
 		// Parse and normalize MIB response using shared parser logic
@@ -324,12 +325,12 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		}
 		if norm == nil {
 			// no usable data for this candidate, emit zeroed metrics
-			ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMtu, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxQueueLen, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, "", "", "", "")
 			continue
 		}
 
@@ -415,12 +416,12 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 
 		// Emit metrics using the stable labelName (eth1..ethN).
 		debugLog("EMIT netdev ifname=%s mtu=%v tx=%v up=%v", labelName, mtu, tx, state)
-		ch <- prometheus.MustNewConstMetric(netdevUp, prometheus.GaugeValue, state, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevMtu, prometheus.GaugeValue, mtu, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevTxQueueLen, prometheus.GaugeValue, tx, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevSpeedMbps, prometheus.GaugeValue, speed, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevLastChange, prometheus.GaugeValue, lct, labelName)
-		ch <- prometheus.MustNewConstMetric(netdevInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevUp, prometheus.GaugeValue, state, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevMtu, prometheus.GaugeValue, mtu, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevTxQueueLen, prometheus.GaugeValue, tx, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevSpeedMbps, prometheus.GaugeValue, speed, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevLastChange, prometheus.GaugeValue, lct, labelName)
+		ch <- prometheus.MustNewConstMetric(metrics.NetdevInfo, prometheus.GaugeValue, 1.0, labelName, alias, flags, lladdr, dtype)
 
 		// Also fetch per-interface statistics via getNetDevStats and export them.
 		// This mirrors the device API call:
@@ -432,27 +433,27 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		if statsResp == "" {
 			// Emit zeroed stats so metric families are present even when the
 			// device doesn't return data for this candidate.
-			ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
-			ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevMulticast, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevCollisions, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
+			ch <- prometheus.MustNewConstMetric(metrics.NetdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
 			continue
 		}
 		if data, err := parsernemo.ParseNetDevStats([]byte(statsResp)); err == nil {
@@ -496,109 +497,109 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 
 			// Emit metrics if present, otherwise zero values to keep families present.
 			if v, ok := getNum("RxPackets"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxPackets, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxPackets, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxPackets"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxPackets, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxPackets, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxBytes"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxBytes, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxBytes, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxBytes"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxBytes, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxBytes, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxDropped"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxDropped, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxDropped, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxDropped"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxDropped, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxDropped, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("Multicast"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevMulticast, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevMulticast, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevMulticast, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("Collisions"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevCollisions, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevCollisions, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevCollisions, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxLengthErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxLengthErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxLengthErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxOverErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxOverErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxOverErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxCrcErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxCrcErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxCrcErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxFrameErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFrameErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFrameErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxFifoErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFifoErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("RxMissedErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxMissedErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevRxMissedErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxAbortedErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxAbortedErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxAbortedErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxCarrierErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxCarrierErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxCarrierErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxFifoErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxFifoErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxFifoErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxHeartbeatErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxHeartbeatErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxHeartbeatErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 			if v, ok := getNum("TxWindowErrors"); ok {
-				ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, v, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxWindowErrors, prometheus.GaugeValue, v, labelName)
 			} else {
-				ch <- prometheus.MustNewConstMetric(netdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
+				ch <- prometheus.MustNewConstMetric(metrics.NetdevTxWindowErrors, prometheus.GaugeValue, 0.0, labelName)
 			}
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 
 	connectivity "github.com/GrammaTonic/experia-v10-exporter/internal/collector/connectivity"
+	metrics "github.com/GrammaTonic/experia-v10-exporter/internal/collector/metrics"
 	"github.com/GrammaTonic/experia-v10-exporter/internal/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -28,10 +29,10 @@ func TestDescribeEmitsDescriptors(t *testing.T) {
 	foundIfup := false
 	foundPermission := false
 	for d := range ch {
-		if d.String() == ifupTime.String() {
+		if d.String() == metrics.IfupTime.String() {
 			foundIfup = true
 		}
-		if d == permissionErrors.Desc() {
+		if d == metrics.PermissionErrors.Desc() {
 			foundPermission = true
 		}
 	}
