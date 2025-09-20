@@ -136,3 +136,37 @@ PromQL examples:
 
    `experia_v10_netdev_mtu < 1500`
 
+## WAN discovery and release notes
+
+Release workflow (quick):
+
+- Create a `feature/release` branch from `develop` (this repository uses a `develop` -> `main` flow).
+- Bump version or tag (for example `v1.2.3`) and push the tag to `origin`.
+- CI builds the image (the Docker image includes a small `/probe` binary used for Docker `HEALTHCHECK`) and will publish to the configured container registry (GHCR) when pushing to `main` if CI is configured for publishing.
+
+If you need to build and publish locally:
+
+```bash
+# build and test locally
+go build -o experia-v10-exporter ./cmd/experia-v10-exporter
+docker build -t yourname/experia-v10-exporter:latest -f docker/Dockerfile .
+docker push yourname/experia-v10-exporter:latest
+```
+
+WAN discovery metric
+
+This exporter exposes a discovery metric indicating which interface the collector considers the WAN interface:
+
+- `experia_v10_wan_ifname{ifname="<IFNAME>"} 1` — the ifname (normalized) that the collector determined is the WAN interface.
+
+Implementation notes:
+
+- The collector uses router MIBs and deterministic heuristics (MAC matching and alias checks) to choose a stable `ifname`. The `ifname` label is normalized (uppercase) to avoid duplicate series.
+- When the router is unreachable or authentication fails the collector emits a placeholder like `experia_v10_wan_ifname{ifname=""} 0` so the metric family exists and CI/alerts that rely on the metric do not unexpectedly fail.
+
+Docker & HEALTHCHECK notes
+
+- The Docker image includes a tiny `/probe` binary used by the `HEALTHCHECK` instruction to wait until the exporter is serving `/metrics`.
+- If you build your own image, ensure `/probe` is present (the provided `docker/Dockerfile` builds and copies it). If a deployed image lacks `/probe`, the container health will fail with an exec error.
+- Use `EXPERIA_V10_LISTEN_PORT` to override the listen port when running under Docker Compose — `docker/docker-compose.prod.yml` reads this value from the repository `.env`.
+
