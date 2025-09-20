@@ -141,6 +141,11 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 				0.0,
 				"", "", "Unknown", "", "",
 			)
+
+			// Also ensure the WAN discovery metric family is present even when the
+			// collector cannot authenticate to the device. This avoids CI flakes and
+			// makes the metric family discoverable for scrapers relying on it.
+			ch <- prometheus.MustNewConstMetric(metrics.WanIfname, prometheus.GaugeValue, 0.0, "")
 			return
 		}
 		c.sessionMu.Lock()
