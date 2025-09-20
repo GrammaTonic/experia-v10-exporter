@@ -19,9 +19,16 @@ archives:
 
 changelog:
   use: git
-
 # Note: removed deprecated snapshot.name_template and archives.builds.
 # This minimal config is intended for goreleaser v2 `check` and `snapshot` runs.
+
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .ProjectOwner }}/{{ .ProjectName }}:{{ .Tag }}"
+    use: buildx
+    platforms:
+      - linux/amd64
+      - linux/arm64
 
 release:
   github:
