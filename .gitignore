@@ -33,3 +33,4 @@ pkg/
 
 # Local experiments / secrets
 .experia.env
+test-output/
