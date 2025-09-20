@@ -1,0 +1,2595 @@
+Import:
+  - common
+  - mockData
+  
+View:
+  onLoad:
+    executeActionGroup:
+      actions:
+        - startTimer:
+            id: timeoutTimer
+            options:
+              repeat: true
+              repeatInterval: 15  # repeat every 15 seconds
+            onTimer:
+              invokeAPI:
+                name: getTime
+                onResponse: |-
+                  if (!response.body.status) {
+                    // stop the timer and log out
+                    ensemble.stopTimer('timeoutTimer');
+                    ensemble.navigateScreen({
+                      'name': 'Logout',
+                      'options': {
+                        'clearAllScreens': true
+                      }
+                    });
+                  }
+        
+  styles:
+    scrollableView: true
+
+  Column:
+    styles:
+      fontSize: 16
+    children:
+      -  PageHeader:
+          inputs:
+            title: r@kpn.nav.internet_link
+            showConnectionWarning: ${ensemble.storage.internetConnected == false}
+            showSlaveDeviceWarning: ${ isMaster() == false }
+      - TabBar:
+          items:
+            - label: r@kpn.internet_link.info
+              body: Info
+
+            - label: r@kpn.internet_link.internet_usage
+              body: InternetUsage
+
+            - label: r@kpn.internet_link.trace_route
+              body: TraceRoute
+
+            - label: r@kpn.internet_link.4g_backup
+              body: Backup4g
+
+            - label: r@kpn.internet_link.ipv6
+              body: IPv6
+
+            - label: r@kpn.internet_link.dns
+              body: DNS
+
+Info:
+  onLoad:
+    executeActionGroup:
+      actions:
+        - invokeAPI:
+            name: getDSLIntfData
+        - invokeAPI:
+            name: getWanPortParams
+            inputs:
+              ethNum: '${ ensemble.storage.appConfig.WanPort }'
+        - invokeAPI:
+            name: getInternetConnection
+        - invokeAPI:
+            name: getPPPIntfData
+        - invokeAPI:
+            name: getMtu
+        - invokeAPI:
+            name: getWANInfo
+        - invokeAPI:
+            name: getNMC
+
+  Column:
+    styles:
+      padding: 16
+    children:
+
+      - LoadingContainer:
+          isLoading: ${ getWANInfo.body == null }
+
+          loadingWidget: 
+            Row:
+              styles:
+                backgroundColor: 0xFFFFFFFF
+                shadowColor: 0xFFDEDEDE
+                shadowRadius: 3
+                shadowOffset: [0, 0]
+                borderRadius: 10
+                padding: 16
+                gap: 12
+                crossAxis: center
+                mainAxisSize: max
+                height: 600
+              children:
+                - Spacer
+                - Progress:
+                    styles: { size: 50 }
+                - Spacer
+          widget:
+            Column:
+              styles:
+                  backgroundColor: 0xFFFFFFFF
+                  shadowColor: 0xFFDEDEDE
+                  shadowRadius: 3
+                  shadowOffset: [0, 0]
+                  borderRadius: 10
+                  padding: 16
+                  gap: 12
+              children:
+
+                # only display if connection type is not ethernet
+                - Column:
+                    styles: { gap: 12 }
+                    visible: "${ getWANInfo.body.data.LinkType == 'ethernet' ? false : true }"
+                    children:
+                      - ContentTitle:
+                          inputs:
+                            title:  r@kpn.internet_link.dsl_informatie
+                      - LabelValueRow:
+                          inputs:
+                            label: r@kpn.internet_link.dsl_status
+                            value: "${getDSLIntfData.body.status.dsl.dsl0.LinkStatus == 'Up' ? 'r@kpn.internet_link.dsl_status_up' : 'r@kpn.internet_link.dsl_status_down' }"
+                      - Divider
+
+                      - LabelValueRow:
+                          inputs:
+                            label: r@kpn.internet_link.wan_connection_type
+                            value: ${getDSLIntfData.body.status.dsl.dsl0.ModulationType}
+                      - Divider
+
+                      - LabelValueRow:
+                          inputs:
+                            label: r@kpn.internet_link.time_active
+                            value: ${getDSLIntfData.body.status.dsl.dsl0.LastChange.prettyDuration()}
+                      - Divider
+
+                      - LabelValueRow:
+                          inputs:
+                            label: r@kpn.internet_link.standard
+                            value: ${getDSLIntfData.body.status.dsl.dsl0.StandardUsed}
+                      - Divider
+
+                      - LabelValueRow:
+                          inputs:
+                            label: r@kpn.internet_link.link_encapsulation
+                            value: ${getDSLIntfData.body.status.dsl.dsl0.ChannelEncapsulationType}
+                      - Divider
+
+                      - FittedRow:
+                          styles: 
+                            margin: 12 0 8 0
+                            childrenFits:
+                              - 1
+                              - 2
+                          children:
+                            - Spacer
+                            - Row:
+                                children:
+                                  - Text:
+                                      text: r@kpn.internet_link.downstream
+                                      styles: { textStyle: { fontWeight: bold }}
+                                  - Text:
+                                      text: " / r@kpn.internet_link.upstream"
+
+                      - FittedRow:
+                          semantics:
+                            label: r@kpn.internet_link.dsl_act_rate
+                            hint:  r@kpn.internet_link.downstream ${getDSLIntfData.body.status.dsl.dsl0.DownstreamCurrRate} / r@kpn.internet_link.upstream ${getDSLIntfData.body.status.dsl.dsl0.UpstreamCurrRate}
+                          styles:
+                            childrenFits:
+                              - 1
+                              - 2
+                          children:
+                            - Text:
+                                text: r@kpn.internet_link.dsl_act_rate
+                            - Row:
+                                children:
+                                  - Text:
+                                      text: ${getDSLIntfData.body.status.dsl.dsl0.DownstreamCurrRate}
+                                      styles: {textStyle: { fontWeight: bold }}
+                                  - Text:
+                                      text: " / ${getDSLIntfData.body.status.dsl.dsl0.UpstreamCurrRate}"
+
+                      - FittedRow:
+                          semantics:
+                            label: r@kpn.internet_link.dsl_max_rate
+                            hint: r@kpn.internet_link.downstream ${getDSLIntfData.body.status.dsl.dsl0.DownstreamMaxRate} / r@kpn.internet_link.upstream ${getDSLIntfData.body.status.dsl.dsl0.UpstreamMaxRate}
+                          styles:
+                            childrenFits:
+                              - 1
+                              - 2
+                          children:
+                            - Text:
+                                text: r@kpn.internet_link.dsl_max_rate
+                            - Row:
+                                children:
+                                  - Text:
+                                      text: ${getDSLIntfData.body.status.dsl.dsl0.DownstreamMaxRate}
+                                      styles: {textStyle: { fontWeight: bold }}
+                                  - Text:
+                                      text: " / ${getDSLIntfData.body.status.dsl.dsl0.UpstreamMaxRate}"
+
+                      - FittedRow:
+                          styles:
+                            semantics:
+                              label: r@kpn.internet_link.noise_margin
+                              hint: r@kpn.internet_link.downstream ${getDSLIntfData.body.status.dsl.dsl0.DownstreamNoiseMargin / 10} / r@kpn.internet_link.upstream ${getDSLIntfData.body.status.dsl.dsl0.UpstreamNoiseMargin / 10}
+                            childrenFits:
+                              - 1
+                              - 2
+                          children:
+                            - Text:
+                                text: r@kpn.internet_link.noise_margin
+                            - Row:
+                                children:
+                                  - Text:
+                                      text: ${getDSLIntfData.body.status.dsl.dsl0.DownstreamNoiseMargin / 10}
+                                      styles: {textStyle: { fontWeight: bold }}
+                                  - Text:
+                                      text: " / ${getDSLIntfData.body.status.dsl.dsl0.UpstreamNoiseMargin / 10}"
+
+                      - FittedRow:
+                          semantics:
+                           label: r@kpn.internet_link.attenuation
+                           hint: r@kpn.internet_link.downstream ${getDSLIntfData.body.status.dsl.dsl0.DownstreamAttenuation / 10} / r@kpn.internet_link.upstream ${getDSLIntfData.body.status.dsl.dsl0.UpstreamAttenuation / 10}
+                          styles:
+                            childrenFits:
+                              - 1
+                              - 2
+                          children:
+                            - Text:
+                                text: r@kpn.internet_link.attenuation
+                            - Row:
+                                children:
+                                  - Text:
+                                      text: ${getDSLIntfData.body.status.dsl.dsl0.DownstreamAttenuation / 10}
+                                      styles: {textStyle: { fontWeight: bold }}
+                                  - Text:
+                                      text: " / ${getDSLIntfData.body.status.dsl.dsl0.UpstreamAttenuation / 10}"
+
+                      - FittedRow:
+                          semantics:
+                            label: r@kpn.internet_link.power
+                            hint: r@kpn.internet_link.downstream ${getDSLIntfData.body.status.dsl.dsl0.DownstreamPower / 10} / r@kpn.internet_link.upstream ${getDSLIntfData.body.status.dsl.dsl0.UpstreamPower / 10}
+                          styles:
+                            childrenFits:
+                              - 1
+                              - 2
+                          children:
+                            - Text:
+                                text: r@kpn.internet_link.power
+                            - Row:
+                                children:
+                                  - Text:
+                                      text: ${getDSLIntfData.body.status.dsl.dsl0.DownstreamPower / 10}
+                                      styles: {textStyle: { fontWeight: bold }}
+                                  - Text:
+                                      text: " / ${getDSLIntfData.body.status.dsl.dsl0.UpstreamPower / 10}"
+
+                      - Divider
+
+
+                - Spacer:
+                    styles:
+                      size: 8
+
+                - GreenSubtitle:
+                    inputs:
+                      title: r@kpn.internet_link.wan_info
+
+                - FittedRow:
+                    semantics:
+                      label: r@kpn.internet_link.wan_info r@kpn.status
+                      hint: '${getWanPortParams.body.status.Status ? "r@kpn.active" : "r@kpn.inactive"}'
+                    styles:
+                      crossAxis: center
+                      childrenFits:
+                        - 1
+                        - 2
+                    children:
+                        - Text:
+                            text: r@kpn.status
+                        - Text:
+                            text: '${getWanPortParams.body.status.Status ? "r@kpn.active" : "r@kpn.inactive"}'
+                - Divider
+                - Form:
+                    styles:
+                      labelPosition: start
+                    children:
+                      - Dropdown:
+                          label: r@kpn.local_network.duplex
+                          value: ${getWanPortParams.body.status.DuplexModeEnabled}
+                          items: ["Auto", "Half", "Full"]
+                          onChange:
+                            invokeAPI:
+                              name: setDuplexMode
+                              inputs: 
+                                port: '${ ensemble.storage.appConfig.WanPort }'
+                                mode: ${this.value}
+                - Divider
+                - Form:
+                    styles:
+                      labelPosition: start
+                    children:
+                      - Dropdown:
+                          label: r@kpn.local_network.link_speed
+                          value: ${getWanPortParams.body.status.MaxBitRateEnabled + ''} 
+                          items: ${ getPortSpeedDropdownItems(getWanPortParams.body.status.MaxBitRateSupported) }
+                          onChange:
+                            invokeAPI:
+                              name: setPortSpeed
+                              inputs: 
+                                port: '${ ensemble.storage.appConfig.WanPort }'
+                                speed: ${this.value}
+                - Divider
+                - FittedRow:
+                    semantics:
+                      label: r@kpn.local_network.max_bitrate
+                      hint: '${formatSpeed(getWanPortParams.body.status.MaxBitRateSupported)}'
+                    styles:
+                      crossAxis: center
+                      childrenFits:
+                        - 1
+                        - 2
+                    children:
+                      - Text:
+                          text: r@kpn.local_network.max_bitrate
+                      - Text:
+                          text: ${formatSpeed(getWanPortParams.body.status.MaxBitRateSupported)}
+                - Divider
+                - FittedRow:
+                    semantics:
+                      label: r@kpn.local_network.current_bitrate
+                      hint: '${formatSpeed(getWanPortParams.body.status.CurrentBitRate)}'
+                    styles:
+                      crossAxis: center
+                      childrenFits:
+                        - 1
+                        - 2
+                    children:
+                      - Text:
+                          text: r@kpn.local_network.current_bitrate
+                      - Text:
+                          text: ${formatSpeed(getWanPortParams.body.status.CurrentBitRate)}
+              
+                - Divider
+
+                - Spacer:
+                    styles:
+                      size: 8
+
+                - GreenSubtitle:
+                    inputs:
+                      title: r@kpn.internet_link.ppp_informatie
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.time_active
+                      value: ${ getConnectionLastChange(getInternetConnection.body) }
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.ppp_status
+                      value: "${getWANInfo.body.data.Protocol == 'ppp' ? 'r@kpn.internet_link.internet_status_up' : 'r@kpn.internet_link.internet_status_down' }"
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.mtu
+                      value: ${getMtu.body.status}
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.public_address_ipv4
+                      value: ${getWANInfo.body.data.IPAddress}
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.primary_dns_ipv4
+                      value: ${getDnsServers(getWANInfo.body.data)[0]}
+
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.secondary_dns_ipv4
+                      value: ${getDnsServers(getWANInfo.body.data)[1]}
+
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.ppp_username
+                      value: ${ getNMC.body.status.Username } 
+
+                      
+                - Divider
+
+                - LabelValueRow:
+                    inputs: 
+                      label: r@kpn.internet_link.ppp_password
+                      value: ${ getNMC.body.status.Password } 
+
+
+InternetUsage:
+  onLoad:
+    executeActionGroup:
+      actions:
+        - invokeAPI:
+            name: getWANInfo
+        - invokeAPI:
+            name: getWanPortUsage
+            inputs:
+              ethNum: '${ ensemble.storage.appConfig.WanPort }'
+  body:
+    Column:
+      styles:
+        padding: 16
+      children:
+        - Column:
+            styles:
+              backgroundColor: 0xFFFFFFFF
+              shadowColor: 0xFFDEDEDE
+              shadowRadius: 3
+              shadowOffset: [0, 0]
+              borderRadius: 10
+              padding: 16
+              gap: 12
+            children:
+              - ContentTitle:
+                  inputs:
+                    title: r@kpn.internet_link.internet_usage
+              - Text:
+                  semantics:
+                    focusable: true
+                  text: r@kpn.internet_link.internet_usage_description
+              - Divider
+              - Spacer:
+                  styles:
+                    size: 1
+
+              # only display if connection type is not ethernet
+              - Column:
+                  visible: "${ getWANInfo.body.data.LinkType == 'ethernet' ? false : true }"
+                  children:
+                    - DSLUsage
+                    - Divider
+                    - Spacer:
+                        styles:
+                          size: 16
+              - WANUsage
+              - Divider
+              - Spacer:
+                  styles:
+                    size: 16
+              - PPPUsage
+
+
+WANUsage:
+  body:
+    Column:
+      children:
+        - FlexRow:
+            styles:
+              margin: 12 0
+              crossAxis: center
+            children:
+              - Column:
+                  styles:
+                    width: 200
+                    flexMode: flexible
+                  children:
+                    - GreenSubtitle:
+                        inputs:
+                          title: r@kpn.internet_link.wan_data
+              - Text:
+                  text: r@kpn.internet_link.received
+                  styles: 
+                    flexMode: flexible
+                    textStyle:
+                      fontSize: 12
+                      fontWeight: bold
+              - Text:
+                  text: " / r@kpn.internet_link.sent"
+                  styles:
+                    textStyle:
+                      fontSize: 12
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.data
+              hint: r@kpn.internet_link.received ${getWanPortUsage.body.status.RxBytesFormatted} / r@kpn.internet_link.sent ${getWanPortUsage.body.status.TxBytesFormatted}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.data
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  styles:
+                    flexMode: expanded
+                  children:
+                    - Text:
+                        text: ${getWanPortUsage.body.status.RxBytesFormatted}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getWanPortUsage.body.status.TxBytesFormatted}"
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.packages
+              hint: r@kpn.internet_link.received ${getWanPortUsage.body.status.RxPackets} / r@kpn.internet_link.sent ${getWanPortUsage.body.status.TxPackets}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.packages
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  children:
+                    - Text:
+                        text: ${getWanPortUsage.body.status.RxPackets}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getWanPortUsage.body.status.TxPackets}"
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.errors
+              hint: r@kpn.internet_link.received  ${getWanPortUsage.body.status.RxErrors} / r@kpn.internet_link.sent ${getWanPortUsage.body.status.TxErrors}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.errors
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  children:
+                    - Text:
+                        text: ${getWanPortUsage.body.status.RxErrors}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getWanPortUsage.body.status.TxErrors}"
+
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.lost_packages
+              hint: r@kpn.internet_link.received ${getWanPortUsage.body.status.RxDropped} / r@kpn.internet_link.sent ${getWanPortUsage.body.status.TxDropped}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.lost_packages
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  children:
+                    - Text:
+                        text: ${getWanPortUsage.body.status.RxDropped}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getWanPortUsage.body.status.TxDropped}"
+
+DSLUsage:
+  onLoad:
+    executeActionGroup:
+      actions:
+        - invokeAPI:
+            name: getDSLIntfData
+        - invokeAPI:
+            name: getDSLStats
+  
+  body:
+    Column:
+      children:
+        - FlexRow:
+            styles:
+              margin: 12 0
+              crossAxis: center
+            children:
+              - Column:
+                  styles:
+                    width: 200
+                    flexMode: flexible
+                  children:
+                    - GreenSubtitle:
+                        inputs:
+                          title: r@kpn.internet_link.dsl_internet
+              - Text:
+                  text: r@kpn.internet_link.received
+                  styles: 
+                    flexMode: flexible
+                    textStyle:
+                      fontSize: 12
+                      fontWeight: bold
+              - Text:
+                  text: / r@kpn.internet_link.sent
+                  styles:
+                    textStyle:
+                      fontSize: 12
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.data
+              hint: r@kpn.internet_link.received ${getDSLStats.body.status.stats.BytesReceivedFormatted} / r@kpn.internet_link.sent ${getDSLStats.body.status.stats.BytesSentFormatted}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.data
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  styles:
+                    flexMode: expanded
+                  children:
+                    - Text:
+                        text: ${getDSLStats.body.status.stats.BytesReceivedFormatted}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getDSLStats.body.status.stats.BytesSentFormatted}"
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.packages
+              hint: r@kpn.internet_link.received ${getDSLStats.body.status.stats.PacketsReceived} / r@kpn.internet_link.sent ${getDSLStats.body.status.stats.PacketsSent}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.packages
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  styles:
+                    flexMode: expanded
+                  children:
+                    - Text:
+                        text: ${getDSLStats.body.status.stats.PacketsReceived}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getDSLStats.body.status.stats.PacketsSent}"
+
+
+PPPUsage:
+  onLoad:
+    invokeAPI:
+      name: getPPPStats
+      inputs:
+        type: "${ getWANInfo.body.data.LinkType == 'ethernet' ? 'ppp_vdata' : 'ppp_vvdata'}"
+  body:
+    Column:
+      children:
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.ppp_data
+              hint: r@kpn.internet_link.received / r@kpn.internet_link.sent
+            styles:
+              margin: 12 0
+              crossAxis: center
+            children:
+              - Column:
+                  styles:
+                    width: 200
+                    flexMode: flexible
+                  children:
+                    - GreenSubtitle:
+                        inputs:
+                          title: r@kpn.internet_link.ppp_data
+              - Text:
+                  text: r@kpn.internet_link.received
+                  styles: 
+                    flexMode: flexible
+                    textStyle:
+                      fontSize: 12
+                      fontWeight: bold
+              - Text:
+                  text: " / r@kpn.internet_link.sent"
+                  styles:
+                    textStyle:
+                      fontSize: 12
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.data
+              hint: r@kpn.internet_link.received ${getPPPStats.body.status.RxBytesFormatted} / r@kpn.internet_link.sent ${getPPPStats.body.status.TxBytesFormatted}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.data
+                  styles:
+                    width: 200
+                    flexMode: flexible
+
+              - Row:
+                  styles:
+                    flexMode: expanded
+                  children:
+                    - Text:
+                        text: ${getPPPStats.body.status.RxBytesFormatted}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getPPPStats.body.status.TxBytesFormatted}"
+        - Divider
+        - FlexRow:
+            semantics:
+              label: r@kpn.internet_link.packages
+              hint: r@kpn.internet_link.received ${getPPPStats.body.status.RxPackets} / r@kpn.internet_link.sent ${getPPPStats.body.status.TxPackets}
+            styles:
+              margin: 12 0
+            children:
+              - Text:
+                  text: r@kpn.internet_link.packages
+                  styles:
+                    width: 200
+                    flexMode: flexible
+              - Row:
+                  styles:
+                    flexMode: expanded
+                  children:
+                    - Text:
+                        text: ${getPPPStats.body.status.RxPackets}
+                        styles: {textStyle: { fontWeight: bold }}
+                    - Text:
+                        text: " / ${getPPPStats.body.status.TxPackets}"
+
+IPUsage:
+  onLoad:
+    invokeAPI:
+      name: getBridgeStats
+  Column:
+    styles: { gap: 6, margin: 12 0 }
+    children:
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                styles:
+                  textStyle:
+                    fontWeight: bold
+                text: r@kpn.internet_link.ip_data
+            - Row:
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.received
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: / r@kpn.internet_link.send
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.data
+            - Row:
+                children:
+                  - Text:
+                      text: ${getBridgeStats.body.status.RxBytesFormatted}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getBridgeStats.body.status.TxBytesFormatted}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.packages
+            - Row:
+                children:
+                  - Text:
+                      text: ${getBridgeStats.body.status.RxPackets}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getBridgeStats.body.status.TxPackets}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.errors
+            - Row:
+                children:
+                  - Text:
+                      text: ${getBridgeStats.body.status.RxErrors}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getBridgeStats.body.status.TxErrors}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.lost_packages
+            - Row:
+                children:
+                  - Text:
+                      text: ${getBridgeStats.body.status.RxDropped}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getBridgeStats.body.status.TxDropped}"
+
+
+IPTVUsage:
+  onLoad:
+    invokeAPI:
+      name: getIPTVStats
+  Column:
+    styles: { gap: 6, margin: 12 0 }
+    children:
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                styles:
+                  textStyle:
+                    fontWeight: bold
+                text: r@kpn.internet_link.ip_iptv
+            - Row:
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.received
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: / r@kpn.internet_link.sent
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.data
+            - Row:
+                children:
+                  - Text:
+                      text: ${getIPTVStats.body.status.RxBytesFormatted}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getIPTVStats.body.status.TxBytesFormatted}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.packages
+            - Row:
+                children:
+                  - Text:
+                      text: ${getIPTVStats.body.status.RxPackets}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getIPTVStats.body.status.TxPackets}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.errors
+            - Row:
+                children:
+                  - Text:
+                      text: ${getIPTVStats.body.status.RxErrors}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getIPTVStats.body.status.TxErrors}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.lost_packages
+            - Row:
+                children:
+                  - Text:
+                      text: ${getIPTVStats.body.status.RxDropped}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getIPTVStats.body.status.TxDropped}"
+
+
+GuestUsage:
+  onLoad:
+    invokeAPI:
+      name: getGuestStats
+  Column:
+    styles: { gap: 6, margin: 12 0 }
+    children:
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                styles: 
+                  textStyle:
+                    fontWeight: bold
+                text: r@kpn.internet_link.ip_bridge_guest
+            - Row:
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.received
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: / r@kpn.internet_link.sent
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.data
+            - Row:
+                children:
+                  - Text:
+                      text: ${getGuestStats.body.status.RxBytesFormatted}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getGuestStats.body.status.TxBytesFormatted}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.packages
+            - Row:
+                children:
+                  - Text:
+                      text: ${getGuestStats.body.status.RxPackets}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getGuestStats.body.status.TxPackets}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.errors
+            - Row:
+                children:
+                  - Text:
+                      text: ${getGuestStats.body.status.RxErrors}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getGuestStats.body.status.TxErrors}"
+      - Divider
+
+      - FittedRow:
+          styles:
+            childrenFits:
+              - 1
+              - 2
+          children:
+            - Text:
+                text: r@kpn.internet_link.lost_packages
+            - Row:
+                children:
+                  - Text:
+                      text: ${getGuestStats.body.status.RxDropped}
+                      styles:
+                        textStyle:
+                          fontWeight: bold
+                  - Text:
+                      text: " / ${getGuestStats.body.status.TxDropped}"
+
+
+TraceRoute:
+  Column:
+    styles:
+      padding: 16
+    children:
+      - Column:
+          styles:
+            backgroundColor: 0xFFFFFFFF
+            shadowColor: 0xFFDEDEDE
+            shadowRadius: 3
+            shadowOffset: [0, 0]
+            borderRadius: 10
+            padding: 16
+            gap: 12
+          children:
+            - ContentTitle:
+                inputs:
+                  title: r@kpn.internet_link.trace_route
+            - Text:
+                text: r@kpn.internet_link.trace_route_description
+            - Divider:
+                styles: { margin: 16 0 }
+
+            - Form:
+                styles: 
+                  labelPosition: '${device.width > 768 ? "start" : "top"}'
+                  gap: 16 
+                children:
+                  - Dropdown:
+                      id: pingType
+                      label: r@kpn.internet_link.trace_or_ping_route
+                      items: ['Traceroute', 'Ping']
+                      value: Traceroute
+                      required: true
+                  - Dropdown:
+                      id: ipversion
+                      label: r@kpn.internet_link.ip_version
+                      items: [
+                        {label: 'Any' , value: 'Any' },
+                        {label: 'IPv4' , value: 'IPv4' },
+                        {label: 'IPv6', value: 'IPv6' },
+                      ]
+                      value: 'IPv4'
+                      required: true
+                  - TextInput:
+                      id: hostname
+                      label: r@kpn.internet_link.hostname_or_ip
+                      value: www.google.com
+                      required: true
+                  - Row:
+                      styles: { mainAxis: end, gap: 24 }
+                      children:
+                        - Button:
+                            label: r@kpn.start
+                            onTap: |
+                              // call the relevant API
+                              // traceroute
+                              if (pingType.value == "Traceroute")
+                                ensemble.invokeAPI("startTraceRoute", {
+                                  "ipversion": ipversion.value,
+                                  "hostname": hostname.value
+                                });
+
+                              // ping
+                              if (pingType.value == "Ping")
+                                ensemble.invokeAPI("startPing", {
+                                  "ipversion": ipversion.value,
+                                  "hostname": hostname.value
+                                });
+
+            # results
+            - Conditional:
+                conditions:
+                  - if: ${ startTraceRoute.isLoading == true || startPing.isLoading == true }
+                    Row:
+                      styles: { gap: 8, crossAxis: center, padding: 10 0 0 0 }
+                      id: trStatus
+                      children:
+                        - Progress:
+                            styles: { size: 20 }
+                        - Text:
+                            text: r@kpn.waiting_for_response
+                            semantics:
+                                focusable: true
+                  - elseif: ${startPing.body != null && pingType.value == "Ping"}
+                    Column:
+                      styles:
+                        gap: 8
+                        width: 400
+                      children:
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.diagnostics_state
+                              - Text:
+                                  text: ${startPing.body.status.DiagnosticsState}
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.ip_host
+                              - Text:
+                                  text: ${startPing.body.status.ipHost}
+                                  semantics:
+                                    focusable: true
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.packets_success
+                              - Text:
+                                  text: ${startPing.body.status.packetsSuccess}
+                                  semantics:
+                                    focusable: true
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.packets_failed
+                              - Text:
+                                  text: ${startPing.body.status.packetsFailed}
+                                  semantics:
+                                    focusable: true
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.packet_size
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${startPing.body.status.packetSize}
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.average_response_time
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${startPing.body.status.averageResponseTime}
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.minimum_response_time
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${startPing.body.status.minimumResponseTime}
+                        - Divider
+                        - Row:
+                            styles: { gap: 10 }
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  styles:
+                                    width: 200
+                                    textStyle:
+                                      fontWeight: bold
+                                  text: r@kpn.internet_link.maximum_response_time
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${startPing.body.status.maximumResponseTime}
+                  - elseif: ${startTraceRoute.body != null && pingType.value == "Traceroute"}
+                    DataGrid:
+                      semantics:
+                        focusable: true
+                      styles:
+                        headingText: { fontSize: 13, color: grey }
+                      borderColor: white
+                      horizontalMargin: 0
+                      columnSpacing: 60
+                      DataColumns:
+                        - label: r@kpn.internet_link.host_address
+                          type: text
+                        - label: r@kpn.host_name
+                          type: text
+                        - label: r@kpn.internet_link.response_time
+                          type: text
+                        - label: r@kpn.internet_link.error_code
+                          type: text
+                      item-template:
+                        data: ${startTraceRoute.body.RouteHopsList}
+                        name: tr
+                        template:
+                          DataRow:
+                            children:
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${tr.HostAddress}
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${tr.Host}
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${tr.RTTimes}
+                              - Text:
+                                  semantics:
+                                    focusable: true
+                                  text: ${tr.ErrorCode}
+                  - elseif: ${ startTraceRoute.isError == true || startPing.isError == true }
+                    Text:
+                      semantics:
+                        focusable: true
+                      styles:
+                        textStyle:
+                          color: 0xffE52E2E
+                          fontWeight: bold
+                      text: r@kpn.internet_link.trace_route_failed
+
+IPv6:
+  onLoad:
+    invokeAPI:
+      name: getIPv6LLA
+      onResponse:
+        invokeAPI:
+            name: getIpv6Status
+            onResponse:
+              invokeAPI:
+                name: getPPPIntfData
+                onResponse:
+                  invokeAPI:
+                    name: getWANInfo
+                    onResponse:
+                      invokeAPI:
+                        name: getDHCPIPv6pdata
+  Column:
+    styles:
+      padding: 16
+    children:
+      - Column:
+          id: content
+          styles:
+            backgroundColor: 0xFFFFFFFF
+            shadowColor: 0xFFDEDEDE
+            shadowRadius: 3
+            shadowOffset: [0, 0]
+            borderRadius: 10
+            padding: 16
+            gap: 12
+          children:
+            - ContentTitle:
+                inputs:
+                  title: r@kpn.internet_link.ipv6
+            - Text:
+                text: r@kpn.internet_link.ipv6_description
+
+            - Divider
+
+            - Form:
+                styles:
+                  labelPosition: '${device.width > 768 ? "start" : "top"}'
+                  gap: 16 
+                children:
+                  - Switch:
+                      id: ipv6Switch
+                      label: r@kpn.internet_link.ipv6
+                      value: ${getIpv6Status.body.status.EnableIPv6}
+                      onChange:
+                        executeCode:
+                          body: |
+                            //@code
+                            var status = 0;
+                            if (this.value)
+                              status = 1;
+                            ensemble.invokeAPI('setIpv6Status', { 'status': status });
+                          onComplete:
+                            invokeAPI:
+                              name: getPPPIntfData
+                              onResponse:
+                                invokeAPI:
+                                  name: getWANInfo
+                                  onResponse:
+                                    executeCode:
+                                      body: |
+                                        //@code
+                                        var dnsServers = getWANInfo.body.data.DNSServers.split(",");
+                                        ipv6PrimaryDns.text = dnsServers[2];
+                                        ipv6SecondaryDns.text = dnsServers[3];
+                                      onComplete:
+                                        showToast:
+                                          message: r@kpn.success
+                                          styles:
+                                            padding: 0
+                                          options:
+                                            type: custom
+                                            duration: 15
+                                            dismissible: true
+                                            alignment: center
+
+            # Hide this if ipv6 disabled
+            - Conditional:
+                conditions:
+                  - if: ${ getIpv6Status.body.status.EnableIPv6 == true ||  ipv6Switch.value == true }
+                    Column:
+                      styles: { gap: 12 }
+                      children:
+                        - Divider
+                        - LabelValueRow:
+                            inputs: 
+                              label: r@kpn.internet_link.public_address_ipv6
+                              value: "${getWANInfo.body.data.IPv6Address == '' ? '-' : getWANInfo.body.data.IPv6Address}"
+                        - Divider
+
+                        - LabelValueRow:
+                            inputs:
+                              label: r@kpn.internet_link.local_address_ipv6
+                              value: ${getIPv6LLA.body.status}
+                        - Divider
+
+                        - LabelValueRow:
+                            inputs: 
+                              label: r@kpn.internet_link.delegated_prefix
+                              value: ${getWANInfo.body.data.IPv6DelegatedPrefix}
+                        - Divider
+
+                        - FittedRow:
+                            semantics:
+                              label: r@kpn.internet_link.primary_dns_ipv6
+                              hint: ${getWANInfo.body.data.DNSServers.split(",")[2]}
+                            styles:
+                              childrenFits:
+                                - 1
+                                - 2
+                            children:
+                              - Text:
+                                  text: r@kpn.internet_link.primary_dns_ipv6
+                              - Text:
+                                  text: ${getWANInfo.body.data.DNSServers.split(",")[2]}
+                        - Divider
+
+                        - FittedRow:
+                            semantics:
+                              label: r@kpn.internet_link.secondary_dns_ipv6
+                              hint: ${getWANInfo.body.data.DNSServers.split(",")[3]}
+                            styles:
+                              childrenFits:
+                                - 1
+                                - 2
+                            children:
+                              - Text:
+                                  text: r@kpn.internet_link.secondary_dns_ipv6
+                              - Text:
+                                  text: ${getWANInfo.body.data.DNSServers.split(",")[3]}
+                        
+                        - Divider
+
+                        - FittedRow:
+                            semantics:
+                              label: r@kpn.internet_link.ipv6_duid
+                              hint: ${getDHCPIPv6pdata.body.status.DUID}
+                            styles:
+                              childrenFits:
+                                - 1
+                                - 2
+                            children:
+                              - Text:
+                                  text: r@kpn.internet_link.ipv6_duid
+                              - Text:
+                                  text: ${getDHCPIPv6pdata.body.status.DUID}
+
+
+Backup4g:
+  onLoad:
+    invokeAPI:
+      name: getWWAN
+  Column:
+    styles:
+      padding: 16
+    children:
+      - Column:
+          semantics:
+            focusable: true
+          styles:
+            backgroundColor: 0xFFFFFFFF
+            shadowColor: 0xFFDEDEDE
+            shadowRadius: 3
+            shadowOffset: [ 0, 0 ]
+            borderRadius: 10
+            padding: 16
+            gap: 16
+          children:
+            - ContentTitle:
+                inputs:
+                  title: r@kpn.internet_link.4g_backup
+            - Text:
+                semantics:
+                  focusable: true
+                text: r@kpn.internet_link.4g_backup_description
+            - Divider
+
+            - Form:
+                semantics:
+                  focsuable: true
+                styles:
+                  labelPosition: '${device.width > 768 ? "start" : "top"}'
+                  gap: 16 
+                children:
+                  - Text:
+                      label: r@kpn.status
+                      semantics:
+                        focusable: true
+                      text: ${getWWAN.body.status.ConnectionStatus}
+            - Divider
+
+            - Form:
+                semantics:
+                  focusable: true
+                styles:
+                  labelPosition: '${device.width > 768 ? "start" : "top"}'
+                  gap: 16 
+                children:
+                  - Dropdown:
+                      label: r@kpn.mode
+                      value: Backup
+                      items: ['Backup']
+                      enabled: false
+                  - Dropdown:
+                      id: apn
+                      label: r@kpn.internet_link.4g_apn
+                      value: ${getWWAN.body.status.APN}
+                      items: [ 'basicinternet', 'internet' ]
+                  - TextInput:
+                      label: r@kpn.internet_link.4g_imsi
+                      value: ${getWWAN.body.status.IMSI}
+                      enabled: false
+                  - TextInput:
+                     label: r@kpn.internet_link.4g_imei
+                     value: ${getWWAN.body.status.IMEI}
+                     enabled: false
+                  - TextInput:
+                      label: r@kpn.internet_link.4g_manufacturer
+                      value: ${getWWAN.body.status.Manufacturer}
+                      enabled: false
+                  - TextInput:
+                      label: r@kpn.internet_link.4g_model
+                      value: ${getWWAN.body.status.Model}
+                      enabled: false
+#                  - TextInput:
+#                      id: pin
+#                      label: r@kpn.internet_link.4g_pin
+#                      value: ${getWWAN.body.status.PINCode}
+#                      enabled: false
+#                  - TextInput:
+#                      id: username
+#                      label: r@kpn.user_name
+#                      value: ${getWWAN.body.status.Username}
+#                      required: true
+#                  - TextInput:
+#                      id: password
+#                      label: r@kpn.password
+#                      value: ${getWWAN.body.status.Password}
+#                      required: true
+            - Row:
+                styles: { gap: 10, mainAxis: end, crossAxis: center }
+                children:
+                  - Text:
+                      id: privWifiUpdateStatus
+                  - Button:
+                      label: r@kpn.restore
+                      className: secondaryButton
+                      onTap:
+                        invokeAPI:
+                          name: getWWAN
+                  - Button:
+                      label: r@kpn.save
+                      validateForm: true
+                      onTap:
+                        invokeAPI:
+                          name: configure4g
+                          inputs:
+                            apn: ${apn.value}
+                            username: ${username.value}
+                            password: ${password.value}
+                          onResponse:
+                            invokeAPI:
+                              name: getWWAN
+            - Spacer:
+                styles: { size: 16 }
+
+
+
+DNS:
+  onLoad:
+    invokeAPI:
+      name: getDnsRoutes
+      onResponse:
+        invokeAPI:
+          name: getDhcpIpv6Settings
+          onResponse:
+            invokeAPI:
+              name: getDhcpIpv4Settings
+              onResponse:
+                invokeAPI:
+                  name: getDhcpIpv4DnsServers
+                  onResponse: |
+                    if (response.body.data.DNSServers == '' || response.body.data.DNSServers == response.body.data.Address) {
+                      dnsProxyCheckbox.value = true;
+                      dnsV4PrimaryInput.value = getDnsRoutes.body.status.dataV4_1.DNS;
+                      dnsV4SecondaryInput.value = getDnsRoutes.body.status.dataV4_2.DNS;
+                      dnsV6PrimaryInput.value = getDnsRoutes.body.status.dataV6_1.DNS;
+                      dnsV6SecondaryInput.value = getDnsRoutes.body.status.dataV6_2.DNS;
+                    } else {
+                      dnsProxyCheckbox.value = false;
+                      dnsV4PrimaryInput.value = response.body.data.DNSServers.split(',')[0];
+                      dnsV4SecondaryInput.value = response.body.data.DNSServers.split(',')[1];
+                      dnsV6PrimaryInput.value = getDhcpIpv6Settings.body.data.DNSServers.split(',')[0];
+                      dnsV6SecondaryInput.value = getDhcpIpv6Settings.body.data.DNSServers.split(',')[1];
+                    }
+
+  body:
+    Column:
+      styles:
+        padding: 16
+      children:
+        - Column:
+            styles:
+              backgroundColor: 0xFFFFFFFF
+              shadowColor: 0xFFDEDEDE
+              shadowRadius: 3
+              shadowOffset: [ 0, 0 ]
+              borderRadius: 10
+              padding: 16 16 60 16
+              gap: 16
+            children:
+              - ContentTitle:
+                  inputs:
+                    title: r@kpn.internet_link.dns
+              - Text:
+                  text: r@kpn.internet_link.dns_description
+                  semantics:
+                    label: r@kpn.internet_link.dns
+
+              - Divider
+
+              - Checkbox:
+                  id: dnsProxyCheckbox
+                  trailingText: r@kpn.internet_link.dns_proxy_checkbox
+                  onChange: |
+                    if (this.value) {
+                      dnsV4PrimaryInput.value = getDnsRoutes.body.status.dataV4_1.DNS;
+                      dnsV4SecondaryInput.value = getDnsRoutes.body.status.dataV4_2.DNS;
+                      dnsV6PrimaryInput.value = getDnsRoutes.body.status.dataV6_1.DNS;
+                      dnsV6SecondaryInput.value = getDnsRoutes.body.status.dataV6_2.DNS;
+                    }
+              - Spacer:
+                  styles:
+                    size: 1
+              - GreenSubtitle:
+                  inputs:
+                    title: r@kpn.internet_link.dns_v4_custom_ip
+              - Form:
+                  styles:
+                    labelPosition: '${device.width > 768 ? "start" : "top"}'
+                    gap: 16 
+                  children:
+                    - TextInput:
+                        id: dnsV4PrimaryInput
+                        label: r@kpn.internet_link.dns_v4_primary
+                        enabled: ${!dnsProxyCheckbox.value}
+                    - TextInput:
+                        id: dnsV4SecondaryInput
+                        label: r@kpn.internet_link.dns_v4_secondary
+                        enabled: ${!dnsProxyCheckbox.value}
+              - Spacer:
+                  styles:
+                    size: 1
+              - GreenSubtitle:
+                  inputs:
+                    title: r@kpn.internet_link.dns_v6_custom_ip
+              - Form:
+                  styles:
+                    labelPosition: '${device.width > 768 ? "start" : "top"}'
+                    gap: 16 
+                  children:
+                    - TextInput:
+                        id: dnsV6PrimaryInput
+                        label: r@kpn.internet_link.dns_v6_primary
+                        enabled: ${!dnsProxyCheckbox.value}
+                    - TextInput:
+                        id: dnsV6SecondaryInput
+                        label: r@kpn.internet_link.dns_v6_secondary
+                        enabled: ${!dnsProxyCheckbox.value}
+              - Divider
+
+              - Row:
+                  styles: { gap: 10, mainAxis: end, crossAxis: center }
+                  children:
+                    - Button:
+                        label: r@kpn.restore
+                        className: secondaryButton
+                        onTap: |
+                          if (getDhcpIpv4DnsServers.body.data.DNSServers == '' || getDhcpIpv4DnsServers.body.data.DNSServers == getDhcpIpv4DnsServers.body.data.Address) {
+                            dnsProxyCheckbox.value = true;
+                            dnsV4PrimaryInput.value = '';
+                            dnsV4SecondaryInput.value = '';
+                            dnsV6PrimaryInput.value = '';
+                            dnsV6SecondaryInput.value = '';
+                          } else {
+                            dnsProxyCheckbox.value = false;
+                            dnsV4PrimaryInput.value = getDhcpIpv4DnsServers.body.data.DNSServers.split(',')[0];
+                            dnsV4SecondaryInput.value = getDhcpIpv4DnsServers.body.data.DNSServers.split(',')[1];
+                            dnsV6PrimaryInput.value = getDhcpIpv6Settings.body.data.DNSServers.split(',')[0];
+                            dnsV6SecondaryInput.value = getDhcpIpv6Settings.body.data.DNSServers.split(',')[1];
+                          }
+
+                    - Button:
+                        label: r@kpn.save
+                        onTap:
+                          showDialog:
+                            widget: DnsSettingsUpdateConfirmation
+
+DnsSettingsUpdateConfirmation:
+  Column:
+    styles:
+      width: 720
+    children:
+
+      # pre submit content
+      - Column:
+          id: preSubmitContent
+          styles:
+            gap: 16
+            fontSize: 16
+          children:
+            - Row:
+                styles: { mainAxis: spaceBetween }
+                children:
+                  - GreenTitle:
+                      inputs:
+                        title: r@kpn.dns_confirmations.dns_settings
+                  - Icon:
+                      icon: 0xe993
+                      library: kpnUI
+                      styles: { color: grey }
+                      onTap: closeAllDialogs
+            - Text:
+                text: r@kpn.dns_confirmations.dns_description
+            - Spacer:
+                styles: { size: 1 }
+            - Divider
+            - Row:
+                semantics:
+                  label: r@kpn.internet_link.dns_proxy_checkbox
+                  hint: "${dnsProxyCheckbox.value ? 'r@kpn.enabled' : 'r@kpn.disabled'}"
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.dns_proxy_checkbox
+                      styles: { expanded: true }
+                  - Text:
+                      text: "${dnsProxyCheckbox.value ? 'r@kpn.enabled' : 'r@kpn.disabled'}"
+                      styles: { expanded: true }
+            - Divider
+            - Row:
+                semantics:
+                  label: r@kpn.internet_link.dns_v4_primary
+                  hint: '${dnsProxyCheckbox.value ? "-" : dnsV4PrimaryInput.value}'
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.dns_v4_primary
+                      styles: { expanded: true }
+                  - Text:
+                      text: '${dnsProxyCheckbox.value ? "-" : dnsV4PrimaryInput.value}'
+                      styles: { expanded: true }
+            - Divider
+            - Row:
+                semantics:
+                  label: r@kpn.internet_link.dns_v4_secondary
+                  hint: '${dnsProxyCheckbox.value ? "-" : dnsV4SecondaryInput.value}'
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.dns_v4_secondary
+                      styles: { expanded: true }
+                  - Text:
+                      text: '${dnsProxyCheckbox.value ? "-" : dnsV4SecondaryInput.value}'
+                      styles: { expanded: true }
+            - Divider
+            - Row:
+                semantics:
+                  label: r@kpn.internet_link.dns_v6_primary
+                  hint: '${dnsProxyCheckbox.value ? "-" : dnsV6PrimaryInput.value}'
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.dns_v6_primary
+                      styles: { expanded: true }
+                  - Text:
+                      text: '${dnsProxyCheckbox.value ? "-" : dnsV6PrimaryInput.value}'
+                      styles: { expanded: true }
+            - Divider
+            - Row:
+                semantics:
+                  label: r@kpn.internet_link.dns_v6_secondary
+                  hint: '${dnsProxyCheckbox.value ? "-" : dnsV6SecondaryInput.value}'
+                children:
+                  - Text:
+                      text: r@kpn.internet_link.dns_v6_secondary
+                      styles: { expanded: true }
+                  - Text:
+                      text: '${dnsProxyCheckbox.value ? "-" : dnsV6SecondaryInput.value}'
+                      styles: { expanded: true }
+            - Divider
+            - Spacer:
+                styles: { size: 1 }
+
+            # warning
+            - Column:
+                semantics:
+                  label: r@kpn.dns_confirmations.dns_warning
+                styles: { backgroundColor: 0xFFFAECDC, borderRadius: 12 }
+                children:
+                  - Divider:
+                      styles: { color: 0xFFEE7700, thickness: 4 }
+                  - Row:
+                      styles: { padding: 16, gap: 12 }
+                      children:
+                        - Icon:
+                            name: 0xe9b9
+                            library: kpnUI
+                            styles: { color: 0xFFEE7700 }
+                        - Text:
+                            styles: { expanded: true }
+                            text: r@kpn.dns_confirmations.dns_warning
+            - Divider:
+                styles: { margin: 8 0 }
+
+            - Row:
+                styles: { mainAxis: end, gap: 16 }
+                children:
+                  - Button:
+                      label: r@kpn.cancel
+                      className: secondaryButton
+                      onTap: closeAllDialogs
+                  - Button:
+                      label: r@kpn.save
+                      onTap:
+                        executeConditionalAction:
+                          conditions:
+                            - if: ${dnsProxyCheckbox.value}
+                              action:
+                                executeCode:
+                                  body: |
+                                    preSubmitContent.visible = false;
+                                    ensemble.invokeAPI("setDhcpIpv4DnsServers", {"dnsServers": getDhcpIpv4Settings.body.status.default.Server });
+                                    ensemble.invokeAPI("setGuestDhcpDnsSettings", {"dnsServers": getDhcpIpv4Settings.body.status.guest.Server });
+                                    ensemble.invokeAPI("setDhcpIpv6DnsServers", {"dnsServers": "" });
+                                    ensemble.invokeAPI("setGuestDhcpIpv6DnsServers", {"dnsServers": "" });
+                                    showSuccessToast();
+                                  onComplete: closeAllDialogs
+                            - else: ${dnsProxyCheckbox.value}
+                              action:
+                                executeCode:
+                                  body: |
+                                    preSubmitContent.visible = false;
+                                    ensemble.invokeAPI("setDhcpIpv4DnsServers", {"dnsServers": dnsV4PrimaryInput.value + "," + dnsV4SecondaryInput.value });
+                                    ensemble.invokeAPI("setDhcpIpv6DnsServers", {"dnsServers": dnsV6PrimaryInput.value + "," + dnsV6SecondaryInput.value });
+                                    ensemble.invokeAPI("setGuestDhcpIpv6DnsServers", {"dnsServers": dnsV6PrimaryInput.value + "," + dnsV6SecondaryInput.value });
+                                    ensemble.invokeAPI("setGuestDhcpDnsSettings", {"dnsServers": dnsV4PrimaryInput.value + "," + dnsV4SecondaryInput.value });
+                                    showSuccessToast();
+
+                                  onComplete: closeAllDialogs
+
+API:
+  getDnsRoutes:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDnsRoutes }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "DNS.Server.Route"
+      "method": "get"
+      "parameters": {}
+
+  setDhcpIpv4DnsServers:
+    inputs:
+      - dnsServers
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster.LAN.default.Bridge.lan"
+      "method": "setIPv4"
+      "parameters":
+        "DNSServers": "${dnsServers}"
+        "Address": "${getDhcpIpv4Settings.body.status.default.Server}"
+        "DHCPEnable": "${getDhcpIpv4Settings.body.status.default.Enable}"
+        "DHCPMinAddress": "${getDhcpIpv4Settings.body.status.default.MinAddress}"
+        "DHCPMaxAddress": "${getDhcpIpv4Settings.body.status.default.MaxAddress}"
+        "PrefixLength": "${getDhcpIpv4DnsServers.body.data.PrefixLength}"
+
+  getDhcpIpv4DnsServers:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDhcpIpv4DnsServers }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster.LAN.default.Bridge.lan"
+      "method": "getIPv4"
+      "parameters": {}
+
+  setDhcpIpv6DnsServers:
+    inputs:
+      - dnsServers
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster.LAN.default.Bridge.lan"
+      "method": "setIPv6Configuration"
+      "parameters":
+        "DNSServers": "${dnsServers}"
+        "Name": "lan"
+
+  setGuestDhcpIpv6DnsServers:
+    inputs:
+      - dnsServers
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster.LAN.default.Bridge.guest"
+      "method": "setIPv6Configuration"
+      "parameters":
+        "DNSServers": "${dnsServers}"
+        "Name": "guest"
+
+  setGuestDhcpDnsSettings:
+    inputs:
+      - dnsServers
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster.LAN.default.Bridge.guest"
+      "method": "setIPv4"
+      "parameters":
+        "DNSServers": "${dnsServers}"
+        "Address": "${getDhcpIpv4Settings.body.status.guest.Server}"
+        "DHCPEnable": "${getDhcpIpv4Settings.body.status.guest.Enable}"
+        "DHCPMinAddress": "${getDhcpIpv4Settings.body.status.guest.MinAddress}"
+        "DHCPMaxAddress": "${getDhcpIpv4Settings.body.status.guest.MaxAddress}"
+        "PrefixLength": "${getDhcpIpv4DnsServers.body.data.PrefixLength}"
+
+  getDhcpIpv4Settings:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDhcpIpv4Settings }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "DHCPv4.Server"
+      "method": "getDHCPServerPool"
+      "parameters": {}
+
+  getDhcpIpv6Settings:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDhcpIpv6Settings }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster.LAN.default.Bridge.lan"
+      "method": "getIPv6Configuration"
+      "parameters":
+        "Name": "lan"
+
+
+  getCurrentUser:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getCurrentUser }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "HTTPService"
+      "method": "getCurrentUser"
+      "parameters": {}
+
+  getIpv6Status:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getIpv6Status }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster"
+      "method": "get"
+      "parameters": {}
+
+  getWANInfo:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getWANInfo }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NMC"
+      "method": "getWANStatus"
+      "parameters": {}
+
+  getNMC:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NMC"
+      "method": "get"
+      "parameters": {}
+
+  getPPPIntfData:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getPPPIntfData }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.data"
+      "method": "getMIBs"
+      "parameters":
+        "mibs": "ppp"
+
+  getDSLIntfData:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDSLIntfData} 
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.data"
+      "method": "getMIBs"
+      "parameters":
+        "mibs": "dsl"
+    onResponse: |
+#      //@code
+#      var DSLdownloadspeedMbps = formatkbpstoMbps(response.body.status.dsl.dsl0.DownstreamCurrRate);
+#      var DSLupspeedMbps = formatkbpstoMbps(response.body.status.dsl.dsl0.UpstreamCurrRate);
+#      response.body.status.dsl.dsl0.DownstreamCurrRate = DSLdownloadspeedMbps;
+#      response.body.status.dsl.dsl0.UpstreamCurrRate = DSLupspeedMbps;
+    #  var BytesReceivedFormatted = formatBytes(response.body.status.stats.BytesReceived);
+    #  response.body.status.stats.BytesReceivedFormatted = BytesReceivedFormatted;
+
+  getDSLStats:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDSLStats }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.dsl0"
+      "method": "getDSLChannelStats"
+      "parameters": {}
+    onResponse: |
+      //@code
+      var BytesSentFormatted = formatBytes(response.body.status.stats.BytesSent);
+      response.body.status.stats.BytesSentFormatted = BytesSentFormatted;
+      
+      var BytesReceivedFormatted = formatBytes(response.body.status.stats.BytesReceived);
+      response.body.status.stats.BytesReceivedFormatted = BytesReceivedFormatted;
+
+  getPPPStats:
+    inputs: [ type ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getPPPStats }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.${type}"
+      "method": "getNetDevStats"
+      "parameters": {}
+    onResponse: |
+      //@code
+      var TxBytesFormatted = formatBytes(response.body.status.TxBytes);
+      response.body.status.TxBytesFormatted = TxBytesFormatted;
+      
+      var RxBytesFormatted = formatBytes(response.body.status.RxBytes);
+      response.body.status.RxBytesFormatted = RxBytesFormatted;
+      
+
+  getBridgeStats:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getBridgeStats }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.bridge"
+      "method": "getNetDevStats"
+      "parameters": {}
+    onResponse: |
+      //@code
+      var TxBytesFormatted = formatBytes(response.body.status.TxBytes);
+      response.body.status.TxBytesFormatted = TxBytesFormatted;
+      
+      var RxBytesFormatted = formatBytes(response.body.status.RxBytes);
+      response.body.status.RxBytesFormatted = RxBytesFormatted;
+      
+
+  getIPTVStats:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getIPTVStats }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.vvlan_iptv"
+      "method": "getNetDevStats"
+      "parameters": {}
+    onResponse: |
+      //@code
+      var TxBytesFormatted = formatBytes(response.body.status.TxBytes);
+      response.body.status.TxBytesFormatted = TxBytesFormatted;
+      
+      var RxBytesFormatted = formatBytes(response.body.status.RxBytes);
+      response.body.status.RxBytesFormatted = RxBytesFormatted;
+
+  getGuestStats:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getGuestStats }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.brguest"
+      "method": "getNetDevStats"
+      "parameters": {}
+    onResponse: |
+      //@code
+      var TxBytesFormatted = formatBytes(response.body.status.TxBytes);
+      response.body.status.TxBytesFormatted = TxBytesFormatted;
+      
+      var RxBytesFormatted = formatBytes(response.body.status.RxBytes);
+      response.body.status.RxBytesFormatted = RxBytesFormatted;
+
+  setIpv6Status:
+    inputs: [ status ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NetMaster"
+      "method": "set"
+      "parameters": {
+        "EnableIPv6": "${status}",
+        "IPv6PrefixMode": "DHCPv6"
+      }
+
+  startTraceRoute:
+    inputs: [ ipversion, hostname ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      service: Traceroute
+      method: start_diagnostic
+      parameters: 
+        host: ${hostname}
+        ipversion: ${ipversion}
+    onResponse: |
+      var dataArray = [];
+      
+      for (key in response.body.status.RouteHops) {
+        var errorCode = "";
+
+        if (response.body.status.RouteHops[key].ErrorCode == 11)
+          errorCode = "r@kpn.internet_link.time_exceeded";
+        else if (response.body.status.RouteHops[key].ErrorCode == 4294967295)
+          errorCode = "r@kpn.internet_link.timeout";
+        else if (response.body.status.RouteHops[key].ErrorCode == 0)
+          errorCode = "r@kpn.internet_link.completed";
+        else if (response.body.status.RouteHops[key].ErrorCode == 3)
+          errorCode = "r@kpn.internet_link.destination_unreachable";
+
+
+        dataArray.push({
+          "ErrorCode": errorCode,
+          "RTTimes": response.body.status.RouteHops[key].RTTimes,
+          "HostAddress": response.body.status.RouteHops[key].HostAddress,
+          "Host": response.body.status.RouteHops[key].Host
+        });
+      }
+      response.body.RouteHopsList = dataArray;
+
+
+  startPing:
+    inputs: [ ipversion, hostname ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      service: IPPingDiagnostics
+      method: execDiagnostic
+      parameters: 
+        ipHost: ${hostname}
+        ProtocolVersion: ${ipversion}
+
+      
+  getMtu:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getMtu }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.data"
+      "method": "getFirstParameter"
+      "parameters":
+        "name": "MTU"
+
+  # 4g backup
+  getWWAN:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getWWAN }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.wwan"
+      "method": "get"
+      "parameters": { }
+
+  configure4g:
+    inputs: [ apn, username, password ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.wwan"
+      "method": "configureConnection"
+      "parameters": {
+         "apn": "${apn}",
+         "username": "${username}",
+         "password": "${password}"
+      }
+
+  getInternetConnection:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getInternetConnection }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.data"
+      "method": "getMIBs"
+      "parameters": {"mibs": "base ppp dhcp"}
+
+  getIPv6LLA:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getIPv6LLA }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.data"
+      "method": "luckyAddrAddress"
+      "parameters": { "flag":"ipv6 && @lla", "traverse":"down" }
+
+  getDHCPIPv6pdata:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getDHCPIPv6pdata }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.dhcpv6_pdata"
+      "method": "get"
+      "parameters": { }
+
+  getWanPortParams:
+    inputs: [ ethNum ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getWanPortParams }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.${ethNum}"
+      "method": "get"
+      "parameters": { }
+
+
+  getWanPortUsage:
+    inputs: [ ethNum ]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getWanPortUsage }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.${ethNum}"
+      "method": "getNetDevStats"
+      "parameters": {}
+    onResponse: |
+      //@code
+      var RxBytesFormatted = formatBytes(response.body.status.RxBytes);
+      response.body.status.RxBytesFormatted = RxBytesFormatted;
+
+      var TxBytesFormatted = formatBytes(response.body.status.TxBytes);
+      response.body.status.TxBytesFormatted = TxBytesFormatted;
+
+  setDuplexMode:
+    inputs: [port, mode]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.${port}"
+      "method": "set"
+      "parameters":
+        "DuplexModeEnabled": "${mode}"
+    onResponse:
+      showToast:
+        message: r@kpn.success
+        styles:
+          padding: 0
+        options:
+          type: custom
+          duration: 5
+          dismissable: true
+          alignment: center
+    onError:
+      showToast:
+        message: r@kpn.error
+        options:
+          dismissable: true
+          type: error
+          duration: 15
+          alignment: center
+
+  setPortSpeed:
+    inputs: [port, speed]
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+    body:
+      "service": "NeMo.Intf.${port}"
+      "method": "set"
+      "parameters":
+        "MaxBitRateEnabled": ${speed}
+    onResponse:
+      showToast:
+        message: r@kpn.success
+        styles:
+          padding: 0
+        options:
+          type: custom
+          duration: 5
+          dismissable: true
+          alignment: center
+    onError:
+      showToast:
+        message: r@kpn.error
+        options:
+          dismissable: true
+          type: error
+          duration: 15
+          alignment: center
+
+  getTime:
+    uri: ${app.baseUrl}/ws/NeMo/Intf/lan:getMIBs
+    method: 'POST'
+    mockResponse: 
+      body: ${ mock_getTime }
+    headers:
+      'Content-Type': 'application/x-sah-ws-4-call+json'
+      'Authorization': 'X-Sah ${ensemble.storage.get("contextId")}'
+      'X-Context': '${ensemble.storage.get("contextId")}'
+      'Cookie': '${ensemble.storage.get("cookie")}'
+      'X-Sah-Request-Type': 'idle'
+    body:
+      "service": "Time"
+      "method": "getTime"
+      "parameters": ""
+
+Global: |-
+  function formatBytes(bytes) {
+    if (bytes == null)
+      return "-";
+
+    var converstionToGB = 1073741824;
+    var GB = 0;
+    if (bytes > 0)
+      GB = Math.round(bytes / converstionToGB * 100) / 100;
+      
+    return GB + ' GB';
+  }
+
+  function formatkbpstoMbps(kbps) {
+    if (kbps == null)
+      return "-";
+
+    var converstionToMbps = 1000;
+    var Mbps = 0;
+    if (kbps > 0)
+      Mbps = Math.round(kbps / converstionToMbps) - 1;
+    return Mbps + ' Mbps';
+  }
+  
+  function showSuccessToast () {
+    var payload = {
+      widget: {
+        SuccessToast: {
+          inputs: { foo: 'bar' }
+        }
+      },
+      styles: {
+        padding: 0
+      },
+      options: {
+        duration: 15,
+        alignment: 'center'
+      }
+    };
+    ensemble.showToast(payload);
+  }
+
+  function getConnectionLastChange(data) {
+    var lastChange = data.path('$..LastChange',function (match) {match})
+    if (lastChange != null && lastChange.length > 0 )
+      return (lastChange[0].prettyDuration());
+    else
+      return ("-");
+    
+  }
+
+
+  function getDnsServers (data) {
+    var dnsServers = data.DNSServers.split(",");
+    var array = ["-","-","-","-"];
+    
+    if (dnsServers.length > 0)
+      array[0] = dnsServers[0];
+
+    if (dnsServers.length > 1)
+      array[1] = dnsServers[1];
+
+    if (dnsServers.length > 2)
+      array[2] = dnsServers[2];
+
+    if (dnsServers.length > 3)
+      array[3] = dnsServers[3];
+
+    return array;
+  }
+
+

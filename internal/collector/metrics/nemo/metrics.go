@@ -10,6 +10,12 @@ var (
 	NetdevLastChange = base.NetdevLastChange
 	NetdevInfo       = base.NetdevInfo
 
+	NetdevPortCurrentBitrate      = base.NetdevPortCurrentBitrate
+	NetdevPortMaxBitRateSupported = base.NetdevPortMaxBitRateSupported
+	NetdevPortMaxBitRateEnabled   = base.NetdevPortMaxBitRateEnabled
+	NetdevPortDuplexEnabled       = base.NetdevPortDuplexEnabled
+	NetdevPortSetPortInfo         = base.NetdevPortSetPortInfo
+
 	NetdevRxPackets  = base.NetdevRxPackets
 	NetdevTxPackets  = base.NetdevTxPackets
 	NetdevRxBytes    = base.NetdevRxBytes

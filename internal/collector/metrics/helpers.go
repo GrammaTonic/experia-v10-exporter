@@ -41,6 +41,29 @@ var (
 		"Static info about the netdev (value is always 1), labels: alias, flags, lladdr, type",
 		[]string{"ifname", "alias", "flags", "lladdr", "type"}, nil)
 
+	// Per-interface port parameters extracted from MIBs (current/max bitrates, duplex)
+	NetdevPortCurrentBitrate = prometheus.NewDesc(
+		MetricPrefix+"netdev_port_current_bitrate_mbps",
+		"Current port bitrate in Mbps",
+		[]string{"ifname"}, nil)
+	NetdevPortMaxBitRateSupported = prometheus.NewDesc(
+		MetricPrefix+"netdev_port_max_bitrate_supported_mbps",
+		"Maximum supported port bitrate in Mbps",
+		[]string{"ifname"}, nil)
+	NetdevPortMaxBitRateEnabled = prometheus.NewDesc(
+		MetricPrefix+"netdev_port_max_bitrate_enabled_mbps",
+		"Maximum enabled port bitrate in Mbps",
+		[]string{"ifname"}, nil)
+	NetdevPortDuplexEnabled = prometheus.NewDesc(
+		MetricPrefix+"netdev_port_duplex_enabled",
+		"Whether duplex mode is enabled for the port (1 = enabled)",
+		[]string{"ifname"}, nil)
+	// Info metric exposing mapping from ifname -> device SetPort (string label)
+	NetdevPortSetPortInfo = prometheus.NewDesc(
+		MetricPrefix+"netdev_port_set_port_info",
+		"Info metric with the device-assigned set_port mapping (value is always 1)",
+		[]string{"ifname", "set_port"}, nil)
+
 	// Per-interface network statistics (from getNetDevStats)
 	NetdevRxPackets = prometheus.NewDesc(
 		MetricPrefix+"netdev_rx_packets_total",
