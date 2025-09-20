@@ -57,6 +57,14 @@ The exporter is configured via environment variables:
 | `EXPERIA_V10_ROUTER_PASSWORD` | Required | Router admin password |
 
 ## Metrics
+
+## Environment files
+Example environment files live in `examples/env/` and `.experia.env.example`. Copy the example into your working files and fill in real credentials (do NOT commit secrets):
+```bash
+cp examples/env/.env.example .env
+cp examples/env/.experia.env.example .experia.env
+```
+
 The exporter provides the following metrics:
 
 - `experia_v10_up`: Whether the exporter is able to scrape the router (1 if up, 0 if down)
