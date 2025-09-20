@@ -1,0 +1,22 @@
+name: Dependabot auto-merge
+
+# Use pull_request_target so the job runs in the context of the base branch
+# (this gives access to secrets like GITHUB_TOKEN for enabling auto-merge).
+on:
+  pull_request_target:
+    types: [opened, reopened, labeled, synchronize]
+
+jobs:
+  enable-auto-merge:
+    name: Enable auto-merge for Dependabot PRs
+    runs-on: ubuntu-latest
+    # Only run for Dependabot-authored PRs
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Enable GitHub auto-merge for this PR
+        uses: peter-evans/enable-pull-request-automerge@v2
+        with:
+          # required input: the PR number
+          pull-request-number: ${{ github.event.pull_request.number }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: squash
