@@ -539,6 +539,15 @@ func (c *Experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
+	// Ensure the WanIfname metric family is always present. If we didn't detect
+	// a WAN candidate above, emit a zero-valued placeholder with an empty
+	// `ifname` label so consumers (and CI smoke tests) can observe the metric
+	// family even when the device is unreachable or didn't return matching data.
+	// This mirrors the placeholder behavior used for other metric families.
+	if wanLabelName == "" {
+		ch <- prometheus.MustNewConstMetric(metrics.WanIfname, prometheus.GaugeValue, 0.0, "")
+	}
+
 }
 
 // CookiesForHost returns the cookies stored in the client's jar for the
