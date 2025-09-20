@@ -1,5 +1,58 @@
 # GitHub Copilot Instructions for experia-v10-exporter
 
+Concise guidance for AI agents editing this repository. Focus on discoverable, repo-specific patterns, build/test workflows, and integration points.
+
+## Quick facts
+- Language: Go (go.mod: go 1.25.1)
+- Module: github.com/GrammaTonic/experia-v10-exporter
+- Main binary: `cmd/experia-v10-exporter`
+- Core package: `internal/collector` (scrapes Experia V10 modem and exposes Prometheus metrics)
+
+## Architecture & why
+- The collector runs a periodic scrape of the modem (HTTP JSON RPC) and exposes metrics on `/metrics` for Prometheus.
+- `cmd/experia-v10-exporter` wires configuration (via `EXPERIA_V10_*` env vars), creates the collector, and registers it with Prometheus.
+- `internal/collector` contains: auth, fetch, JSON parsing, metric construction. Keep networking and parsing logic in small files (`auth.go`, `fetch.go`, `json_prod.go`, `metrics.go`).
+
+## Project-specific patterns
+- Tests are isolated from network by injecting `http.Client` or `Transport` mocks (see `internal/testutil` for helpers: `RoundTripperFunc`, `RewriteTransport`, `MakeJSONHandler`). Reuse these helpers rather than duplicating round-tripper stubs.
+- Prometheus metrics follow the usual pattern: create Gauges/Descs in package, register in `cmd`, and use `MustNewConstMetric` when exporting scraped values.
+- Config is read strictly from environment variables; prefer `os.Getenv` and respect existing names (`EXPERIA_V10_*`).
+- Avoid global mutable state in `internal` packages; prefer struct-based state (e.g., `Experiav10Collector`).
+
+## Tests & developer workflows
+- Run unit tests locally: `go test ./... -v` (Ginkgo is used in some packages; `ginkgo -v ./...` is also supported).
+- Use `httptest.Server` or `internal/testutil` helpers to provide deterministic responses for JSON endpoints. Example: `testutil.MakeJSONHandler(sample)`.
+- Behavior tests use Ginkgo/Gomega; keep their side-effects isolated and use the test helper registry patterns already present.
+
+## Debugging tips
+- If tests fail with network timeouts, check for accidental real network calls; ensure the test injects a mock `Transport` or `httptest.Server`.
+- `cmd` tests may log simulated login warnings — these are expected in test mode; focus on assertions and registry values.
+
+## Files to inspect for common edits
+- `cmd/experia-v10-exporter/main.go` — wiring and Prometheus registration
+- `internal/collector/{auth.go,fetch.go,json_prod.go,metrics.go}` — main logic split across small files
+- `internal/testutil/testutil.go` — shared test helpers (use instead of re-creating helpers)
+
+## Additions & dependencies
+- Respect versions in `go.mod`. When adding dependencies, run `go get` and `go mod tidy`.
+
+## Examples (copyable)
+- Run tests:
+```
+go test ./... -v
+```
+- Run Ginkgo behavior tests:
+```
+ginkgo -v ./internal/collector
+```
+
+## What NOT to do
+- Don't perform actual network calls in unit tests. Use injected `http.Client`/`Transport` or `httptest.Server`.
+- Don't export internal helpers unless needed; prefer adding shared helpers to `internal/testutil`.
+
+If any section is unclear or you want the shorter or longer variant, tell me which parts to adjust.
+# GitHub Copilot Instructions for experia-v10-exporter
+
 These instructions are auto-generated from the repository contents. They are technology- and pattern-aware and must be followed by Copilot when suggesting or generating code for this repository.
 
 ## Project summary
