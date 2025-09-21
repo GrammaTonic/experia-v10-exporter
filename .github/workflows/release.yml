@@ -1,5 +1,4 @@
 name: Release
-name: Release
 
 on:
   push:
@@ -26,7 +25,7 @@ jobs:
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
-          path: |-
+          path: |
             ~/.cache/go-build
             ~/.cache/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -65,7 +64,7 @@ jobs:
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
-          path: |-
+          path: |
             ~/.cache/go-build
             ~/.cache/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -95,7 +94,7 @@ jobs:
         with:
           load: false
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache
-      - name: Set GHCR env for goreleaser
+      - name: Export GHCR_TOKEN for goreleaser
         if: ${{ secrets.GHCR_TOKEN != '' }}
         run: echo "GHCR_TOKEN=${{ secrets.GHCR_TOKEN }}" >> $GITHUB_ENV
       - name: Run goreleaser (release)
@@ -109,4 +108,3 @@ jobs:
         with:
           push: true
           cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache,mode=max
-      - name: Run goreleaser (release)
