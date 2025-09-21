@@ -88,17 +88,12 @@ jobs:
       - name: Set up Docker Buildx
         if: ${{ secrets.GHCR_TOKEN != '' }}
         uses: docker/setup-buildx-action@v2
-      - name: Build and push Docker image to GHCR
+      - name: Restore buildx cache from GHCR
         if: ${{ secrets.GHCR_TOKEN != '' }}
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          load: false
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache
       - name: Set GHCR env for goreleaser
         if: ${{ secrets.GHCR_TOKEN != '' }}
         run: echo "GHCR_TOKEN=${{ secrets.GHCR_TOKEN }}" >> $GITHUB_ENV
@@ -107,3 +102,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      - name: Save buildx cache to GHCR
+        if: ${{ secrets.GHCR_TOKEN != '' }}
+        uses: docker/build-push-action@v4
+        with:
+          push: true
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache,mode=max
