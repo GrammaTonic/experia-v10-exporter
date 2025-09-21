@@ -13,6 +13,8 @@ jobs:
   snapshot:
     name: Snapshot (test goreleaser)
     runs-on: ubuntu-latest
+    outputs:
+      has_ghcr: ${{ steps.check-ghcr.outputs.has_ghcr }}
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/heads/')
     steps:
       - uses: actions/checkout@v4
@@ -36,15 +38,20 @@ jobs:
           install-only: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Validate goreleaser config
+      - name: Check GHCR token available
+        id: check-ghcr
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [ -n "$GHCR_TOKEN" ]; then
+            echo "has_ghcr=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_ghcr=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Check goreleaser config
         run: goreleaser check --config .goreleaser.yml
-      - name: Login to GHCR (for buildx/cache during snapshot)
-        if: ${{ secrets.GHCR_TOKEN != '' }}
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run goreleaser (snapshot)
         run: goreleaser release --snapshot
         env:
@@ -78,26 +85,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Login to GHCR
-        if: ${{ secrets.GHCR_TOKEN != '' }}
+        if: needs.snapshot.outputs.has_ghcr == 'true'
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN }}
       - name: Set up QEMU (for multi-arch builds)
-        if: ${{ secrets.GHCR_TOKEN != '' }}
+        if: needs.snapshot.outputs.has_ghcr == 'true'
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
-        if: ${{ secrets.GHCR_TOKEN != '' }}
+        if: needs.snapshot.outputs.has_ghcr == 'true'
         uses: docker/setup-buildx-action@v2
       - name: Restore buildx cache from GHCR
-        if: ${{ secrets.GHCR_TOKEN != '' }}
+        if: needs.snapshot.outputs.has_ghcr == 'true'
         uses: docker/build-push-action@v4
         with:
           load: false
           cache-from: "type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache"
       - name: Export GHCR_TOKEN for goreleaser
-        if: ${{ secrets.GHCR_TOKEN != '' }}
+        if: needs.snapshot.outputs.has_ghcr == 'true'
         run: echo "GHCR_TOKEN=${{ secrets.GHCR_TOKEN }}" >> $GITHUB_ENV
       - name: Run goreleaser (release)
         run: goreleaser release
@@ -105,7 +112,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       - name: Save buildx cache to GHCR
-        if: ${{ secrets.GHCR_TOKEN != '' }}
+        if: needs.snapshot.outputs.has_ghcr == 'true'
         uses: docker/build-push-action@v4
         with:
           push: true
