@@ -24,3 +24,15 @@ changelog:
 
 # Deprecated fields removed: snapshot.name_template and archives.builds
 # This is a minimal goreleaser v2 config suitable for snapshot checks.
+
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest"
+    dockerfile: docker/Dockerfile
+    use: buildx
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    skip_push: false
+    skip_push: false
