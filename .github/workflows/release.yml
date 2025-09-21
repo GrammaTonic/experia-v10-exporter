@@ -94,6 +94,18 @@ jobs:
         with:
           load: false
           cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache
+      - name: Set up QEMU (for multi-arch builds)
+        if: ${{ secrets.GHCR_TOKEN != '' }}
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        if: ${{ secrets.GHCR_TOKEN != '' }}
+        uses: docker/setup-buildx-action@v2
+      - name: Restore buildx cache from GHCR
+        if: ${{ secrets.GHCR_TOKEN != '' }}
+        uses: docker/build-push-action@v4
+        with:
+          load: false
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache
       - name: Set GHCR env for goreleaser
         if: ${{ secrets.GHCR_TOKEN != '' }}
         run: echo "GHCR_TOKEN=${{ secrets.GHCR_TOKEN }}" >> $GITHUB_ENV
@@ -102,6 +114,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      - name: Save buildx cache to GHCR
+        if: ${{ secrets.GHCR_TOKEN != '' }}
+        uses: docker/build-push-action@v4
+        with:
+          push: true
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache,mode=max
       - name: Save buildx cache to GHCR
         if: ${{ secrets.GHCR_TOKEN != '' }}
         uses: docker/build-push-action@v4
