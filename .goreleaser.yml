@@ -17,10 +17,20 @@ archives:
     files: [README.md]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 changelog:
   use: git
 
-# Deprecated fields removed: snapshot.name_template and archives.builds
-# This is a minimal goreleaser v2 config suitable for snapshot checks.
+# Publish Docker images to GHCR using goreleaser's dockers_v2 support (buildx).
+# The workflow should ensure GHCR_TOKEN is available as a secret.
+dockers_v2:
+  - dockerfile: docker/Dockerfile
+    images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
