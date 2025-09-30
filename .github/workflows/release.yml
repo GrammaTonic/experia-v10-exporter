@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/heads/')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up Go
@@ -30,7 +30,7 @@ jobs:
             ~/.cache/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
       - name: Install goreleaser (install only)
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           install-only: true
@@ -56,7 +56,7 @@ jobs:
     needs: snapshot
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up Go
@@ -71,7 +71,7 @@ jobs:
             ~/.cache/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
       - name: Install goreleaser (install only)
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           install-only: true
@@ -89,10 +89,10 @@ jobs:
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         if: ${{ secrets.GHCR_TOKEN != '' }}
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Restore buildx cache from GHCR
         if: ${{ secrets.GHCR_TOKEN != '' }}
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           load: false
           cache-from: "type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache"
@@ -106,7 +106,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       - name: Save buildx cache to GHCR
         if: ${{ secrets.GHCR_TOKEN != '' }}
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           push: true
           cache-to: "type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache,mode=max"
