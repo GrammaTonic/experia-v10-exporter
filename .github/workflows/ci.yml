@@ -113,7 +113,7 @@ jobs:
           output: trivy-image.json
 
       - name: Upload Trivy results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trivy-results
           path: |
