@@ -17,11 +17,11 @@ jobs:
       has_ghcr: ${{ steps.check-ghcr.outputs.has_ghcr }}
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/heads/')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25'
       - name: Cache Go modules
@@ -32,7 +32,7 @@ jobs:
             ~/.cache/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
       - name: Install goreleaser (install only)
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           install-only: true
@@ -52,6 +52,13 @@ jobs:
         run: goreleaser check --config .goreleaser.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GHCR (for buildx/cache during snapshot)
+        if: steps.check-ghcr.outputs.has_ghcr == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
       - name: Run goreleaser (snapshot)
         run: goreleaser release --snapshot
         env:
@@ -63,11 +70,11 @@ jobs:
     needs: snapshot
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25'
       - name: Cache Go modules
@@ -78,7 +85,7 @@ jobs:
             ~/.cache/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
       - name: Install goreleaser (install only)
-        uses: goreleaser/goreleaser-action@v4
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           install-only: true
@@ -86,20 +93,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Login to GHCR
         if: needs.snapshot.outputs.has_ghcr == 'true'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN }}
       - name: Set up QEMU (for multi-arch builds)
         if: needs.snapshot.outputs.has_ghcr == 'true'
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         if: needs.snapshot.outputs.has_ghcr == 'true'
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Restore buildx cache from GHCR
         if: needs.snapshot.outputs.has_ghcr == 'true'
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           load: false
           cache-from: "type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache"
@@ -113,7 +120,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       - name: Save buildx cache to GHCR
         if: needs.snapshot.outputs.has_ghcr == 'true'
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           push: true
           cache-to: "type=registry,ref=ghcr.io/${{ github.repository }}:buildx-cache,mode=max"
