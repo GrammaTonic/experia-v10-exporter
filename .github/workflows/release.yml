@@ -17,7 +17,7 @@ jobs:
       has_ghcr: ${{ steps.check-ghcr.outputs.has_ghcr }}
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/heads/')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up Go
@@ -70,7 +70,7 @@ jobs:
     needs: snapshot
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up Go
