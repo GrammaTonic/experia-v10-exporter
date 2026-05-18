@@ -100,7 +100,7 @@ jobs:
           password: ${{ secrets.GHCR_TOKEN }}
       - name: Set up QEMU (for multi-arch builds)
         if: needs.snapshot.outputs.has_ghcr == 'true'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
         if: needs.snapshot.outputs.has_ghcr == 'true'
         uses: docker/setup-buildx-action@v3
