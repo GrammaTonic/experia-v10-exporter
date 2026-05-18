@@ -1,6 +1,6 @@
 # This is the first stage, for building things that will be required by the
 # final stage (notably the binary)
-FROM golang:1.25.4 AS builder
+FROM golang:1.26.3 AS builder
 
 WORKDIR /go/src/app
 
