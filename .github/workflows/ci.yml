@@ -99,14 +99,14 @@ jobs:
           docker build -t "$IMAGE" -f docker/Dockerfile . || true
 
       - name: Trivy scan filesystem
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           format: json
           output: trivy-filesystem.json
 
       - name: Trivy scan image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}
           format: json
